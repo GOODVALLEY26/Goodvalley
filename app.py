@@ -196,7 +196,7 @@ def create_app():
             db.session.commit()
 
     # ── Block every route for unauthenticated users ───────────────────────────
-    _PUBLIC_ENDPOINTS = {'login', 'static', 'api_import_historico', 'api_sync_trigger', 'admin_producers_list'}
+    _PUBLIC_ENDPOINTS = {'login', 'static', 'api_import_historico', 'api_sync_trigger'}
 
     @app.before_request
     def require_login():
@@ -3153,23 +3153,6 @@ def create_app():
         return render_template('simulador.html')
 
     # ── Debug: pWarehouse scraper diagnostics ─────────────────────────────────
-
-    @app.route('/admin/producers-list')
-    def admin_producers_list():
-        from models import Bin, Productor
-        from flask import make_response
-        if request.args.get('p') != '001083748':
-            return 'unauthorized', 403
-        bin_growers = sorted({r[0] for r in db.session.query(Bin.producer_name)
-                              .filter(Bin.producer_name != '').distinct().all()},
-                             key=str.upper)
-        seeded = sorted({r[0] for r in db.session.query(Productor.nombre).all()},
-                        key=str.upper)
-        lines = ['=== FROM BINS (pWarehouse) ===']
-        lines += bin_growers
-        lines += ['\n=== SEEDED (Datos → Productores) ===']
-        lines += seeded
-        return make_response('\n'.join(lines), 200, {'Content-Type': 'text/plain; charset=utf-8'})
 
     @app.route('/admin/debug/proc')
     def debug_proc():
