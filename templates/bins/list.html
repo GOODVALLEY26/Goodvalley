@@ -42,6 +42,15 @@
       {% endfor %}
     </select>
   </div>
+  <div class="fld">
+    <label>Grado Productor</label>
+    <select name="grade">
+      <option value="">Todos</option>
+      <option value="A" {{ 'selected' if q_grade == 'A' }}>A</option>
+      <option value="B" {{ 'selected' if q_grade == 'B' }}>B</option>
+      <option value="C" {{ 'selected' if q_grade == 'C' }}>C</option>
+    </select>
+  </div>
   <div class="fld grow">
     <label>Productor</label>
     <select name="grower">
@@ -76,7 +85,7 @@
   <thead><tr>
     <th>Tarja</th><th>Producto</th><th>Calibre</th><th>Serie</th><th>Secado</th>
     <th class="num">kg</th><th class="num">Hum %</th>
-    <th>Productor</th><th>Temp.</th><th>Estado</th>
+    <th>Productor</th><th style="text-align:center">Grado</th><th>Temp.</th><th>Estado</th>
   </tr></thead>
   <tbody>
   {% for b in bins %}
@@ -93,6 +102,12 @@
       <td class="num">{{ b.weight_kg }}</td>
       <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
       <td>{{ b.producer_name or '—' }}</td>
+      <td style="text-align:center">
+        {% set _g = producer_grade_map.get(b.producer_name, '') %}
+        {% if _g %}
+          <span class="pill" style="background:{% if _g=='A' %}#d1fae5{% elif _g=='B' %}#ede9fe{% else %}#fef3c7{% endif %};color:{% if _g=='A' %}#065f46{% elif _g=='B' %}#5b21b6{% else %}#92400e{% endif %};font-weight:700">{{ _g }}</span>
+        {% else %}—{% endif %}
+      </td>
       <td>{{ b.temporada or '—' }}</td>
       <td><span class="badge badge-{{ b.status }}">{{ b.status_label }}</span></td>
     </tr>

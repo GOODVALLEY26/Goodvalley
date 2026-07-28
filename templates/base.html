@@ -25,8 +25,14 @@
        class="{{ 'on' if request.endpoint == 'list_descartes' else '' }}">Descartes</a>
     <a href="{{ url_for('list_pallets') }}"
        class="{{ 'on' if request.endpoint in ('list_pallets','list_saldos') else '' }}">Pallets en Bodega</a>
-    <a href="{{ url_for('rendimientos') }}"
-       class="{{ 'on' if request.endpoint and 'rendimiento' in request.endpoint else '' }}">Rendimientos</a>
+    <div class="nav-dropdown" id="nav-datos-dd">
+      <button type="button" class="nav-dd-toggle {{ 'on' if request.endpoint in ('rendimientos','list_clientes','save_clientes','list_productores','save_productores') else '' }}" id="nav-datos-btn">Datos ▾</button>
+      <div class="nav-dd-menu" id="nav-datos-menu">
+        <a href="{{ url_for('rendimientos') }}" class="{{ 'active' if request.endpoint == 'rendimientos' else '' }}">Rendimientos</a>
+        <a href="{{ url_for('list_clientes') }}" class="{{ 'active' if request.endpoint in ('list_clientes','save_clientes') else '' }}">Clientes</a>
+        <a href="{{ url_for('list_productores') }}" class="{{ 'active' if request.endpoint in ('list_productores','save_productores') else '' }}">Productores</a>
+      </div>
+    </div>
   </nav>
   <div class="topbar-actions">
     {% if current_user.is_authenticated %}
@@ -59,6 +65,42 @@
     </div>
   </div>
 </header>
+<style>
+.nav-dropdown { position: relative; display: inline-block; }
+.nav-dd-toggle {
+  background: none; border: none; cursor: pointer;
+  font: inherit; font-size: 14px; padding: 0; color: var(--muted);
+  text-decoration: none;
+}
+.nav-dd-toggle.on { color: var(--purple); font-weight: 600; }
+.nav-dd-menu {
+  display: none; position: absolute; top: calc(100% + 8px); left: 0;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  min-width: 160px; z-index: 200; padding: 4px 0;
+}
+.nav-dropdown.open .nav-dd-menu { display: block; }
+.nav-dd-menu a {
+  display: block; padding: 8px 16px; font-size: 13px; font-weight: 500;
+  color: var(--fg); text-decoration: none;
+}
+.nav-dd-menu a:hover, .nav-dd-menu a.active { color: var(--purple); background: var(--lavender); }
+</style>
+<script>
+(function () {
+  var datosDD  = document.getElementById('nav-datos-dd');
+  var datosBtn = document.getElementById('nav-datos-btn');
+  if (datosBtn) {
+    datosBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      datosDD.classList.toggle('open');
+    });
+    document.addEventListener('click', function(e) {
+      if (!datosDD.contains(e.target)) datosDD.classList.remove('open');
+    });
+  }
+})();
+</script>
 <script>
 (function () {
   var dd     = document.getElementById('act-dd');

@@ -174,7 +174,7 @@ def create_app():
         return db.session.get(User, int(user_id))
 
     with app.app_context():
-        from models import Bin, Order, OrderLine, Allocation, Excedente, YieldOverride, Proceso, HistoricoMovimiento, OrdenDeVenta, Pallet, AppSetting, User  # noqa: F401
+        from models import Bin, Order, OrderLine, Allocation, Excedente, YieldOverride, Proceso, HistoricoMovimiento, OrdenDeVenta, Pallet, AppSetting, User, Cliente, Productor  # noqa: F401
         _pre_migrate(db)
         db.create_all()
 
@@ -182,6 +182,7 @@ def create_app():
 
         from models import load_yield_overrides
         load_yield_overrides()
+        _seed_grades()
 
     # ── Bootstrap first admin from env vars ───────────────────────────────────
     with app.app_context():
@@ -1105,15 +1106,16 @@ def create_app():
 
     @app.route('/bins')
     def list_bins():
-        from models import Bin, CALIBER_OPTIONS, DRYING_LABELS
+        from models import Bin, CALIBER_OPTIONS, DRYING_LABELS, Productor
         from sqlalchemy import func
 
-        q_caliber  = request.args.get('caliber', '')
-        q_drying   = request.args.get('drying', '')
-        q_status   = request.args.get('status', '')
+        q_caliber   = request.args.get('caliber', '')
+        q_drying    = request.args.get('drying', '')
+        q_status    = request.args.get('status', '')
         q_temporada = request.args.get('temporada', '')
-        q_grower   = request.args.get('grower', '')
-        q_text     = request.args.get('q', '').strip()
+        q_grower    = request.args.get('grower', '')
+        q_grade     = request.args.get('grade', '')
+        q_text      = request.args.get('q', '').strip()
 
         query = Bin.query
 
@@ -1127,6 +1129,10 @@ def create_app():
             query = query.filter(Bin.temporada == q_temporada)
         if q_grower:
             query = query.filter(Bin.producer_name == q_grower)
+        if q_grade:
+            grade_names = [r[0] for r in db.session.query(Productor.nombre)
+                           .filter(Productor.grado == q_grade).all()]
+            query = query.filter(Bin.producer_name.in_(grade_names))
         if q_text:
             like = f'%{q_text}%'
             query = query.filter(
@@ -1143,6 +1149,9 @@ def create_app():
         ).scalar() or 0
 
         bins = query.order_by(Bin.bin_identifier).limit(500).all()
+
+        producer_grade_map = {r[0]: r[1] for r in
+                              db.session.query(Productor.nombre, Productor.grado).all()}
 
         # Filter options
         growers = [
@@ -1170,8 +1179,9 @@ def create_app():
             DRYING_LABELS=DRYING_LABELS,
             growers=growers,
             temporadas=temporadas,
+            producer_grade_map=producer_grade_map,
             q_caliber=q_caliber, q_drying=q_drying, q_status=q_status,
-            q_temporada=q_temporada, q_grower=q_grower, q_text=q_text,
+            q_temporada=q_temporada, q_grower=q_grower, q_grade=q_grade, q_text=q_text,
         )
 
     # ── Orders ────────────────────────────────────────────────────────────────
@@ -2980,6 +2990,66 @@ def create_app():
 
     # ── Rendimientos ──────────────────────────────────────────────────────────
 
+    # ── Clientes / Productores grades ─────────────────────────────────────────
+
+    @app.route('/api/clientes')
+    @login_required
+    def api_clientes():
+        from models import Cliente
+        q = request.args.get('q', '').strip()
+        query = Cliente.query.order_by(Cliente.nombre)
+        if q:
+            query = query.filter(Cliente.nombre.ilike(f'%{q}%'))
+        results = query.limit(20).all()
+        from flask import jsonify
+        return jsonify({'clientes': [{'nombre': c.nombre, 'grado': c.grado or ''} for c in results]})
+
+    @app.route('/clientes')
+    @login_required
+    def list_clientes():
+        from models import Cliente
+        clientes = Cliente.query.order_by(Cliente.nombre).all()
+        return render_template('clientes.html', clientes=clientes)
+
+    @app.route('/clientes/save', methods=['POST'])
+    @login_required
+    def save_clientes():
+        from models import Cliente
+        if request.form.get('passcode') != '001083748':
+            flash('Contraseña incorrecta.', 'error')
+            return redirect(url_for('list_clientes'))
+        for key, val in request.form.items():
+            if key.startswith('grado_'):
+                c = db.session.get(Cliente, int(key[6:]))
+                if c:
+                    c.grado = val.strip() or None
+        db.session.commit()
+        flash('Cambios guardados.', 'ok')
+        return redirect(url_for('list_clientes'))
+
+    @app.route('/productores')
+    @login_required
+    def list_productores():
+        from models import Productor
+        productores = Productor.query.order_by(Productor.nombre).all()
+        return render_template('productores.html', productores=productores)
+
+    @app.route('/productores/save', methods=['POST'])
+    @login_required
+    def save_productores():
+        from models import Productor
+        if request.form.get('passcode') != '001083748':
+            flash('Contraseña incorrecta.', 'error')
+            return redirect(url_for('list_productores'))
+        for key, val in request.form.items():
+            if key.startswith('grado_'):
+                p = db.session.get(Productor, int(key[6:]))
+                if p:
+                    p.grado = val.strip() or None
+        db.session.commit()
+        flash('Cambios guardados.', 'ok')
+        return redirect(url_for('list_productores'))
+
     @app.route('/rendimientos')
     def rendimientos():
         from models import YieldOverride, _YIELD_TABLE, _FLAT_YIELD
@@ -3360,6 +3430,49 @@ def _migrate(db_obj):
                     conn.rollback()
                 except Exception:
                     pass
+
+
+def _seed_grades():
+    """Seed clientes_grado and productores_grado tables if empty."""
+    from models import Cliente, Productor
+    _CLIENTES = [
+        ('Abastos abascal','B'),('Aligonza','B'),('Anatolia','A'),
+        ('Arimex','A'),('Atlanta Poland','A'),('Basesur','B'),
+        ('Calconut','B'),('Chareon Watana','A'),('Corrfruit','B'),
+        ('Dry-Top Bélgica','A'),('First Grade','A'),('Frutos secos y supremos','B'),
+        ('Grupo Industrial Alimenticio','B'),('Hangzhou Zhenzhen','A'),('Helio','B'),
+        ('Inversiones Guatemala','B'),('JD Trade LTD','B'),('Kv Distributor','A'),
+        ('Liu Liu','A'),('Makar Bakalie','B'),('Mayan Foods','B'),
+        ('Mr. Pistachio','B'),('MS GROUP COMPANY','A'),('Nature Food','B'),
+        ('Ningbo','A'),('Noberasco','A'),('Nova fruit','A'),
+        ('Nueces Industriales','B'),('PT Dinamika','A'),('PT Wigas','A'),
+        ('Scalzo','B'),('Seeberger','A'),('Selectos de Arandas','B'),
+        ('Stone West','A'),('Tawanchie','A'),('Thanarak','A'),('Verde Valle','B'),
+    ]
+    _PRODUCTORES = [
+        ('Agr. Maipo Sur','B'),('Agricola Mai','A'),('Agricola Mai-Tuniche','A'),
+        ('Agricola Rio Grande','C'),('Agricola y Ganadera del Maule SPA','B'),
+        ('Agrocomercial San Francisco','A'),('C y L','A'),('Casablanca','A'),
+        ('Casablanca-piso','B'),('Copefrut','A'),('Diego Pacheco','A'),
+        ('Ezquerra','A'),('Finca Fruits','A'),('Fruamed Chile','B'),
+        ('Garces Fruits','C'),('Hernan Donoso','A'),('Iberandes','A'),
+        ('Inversiones Viego','A'),('Juan Droguett','C'),('Juan Valenzuela','B'),
+        ('Manuel Droguett','B'),('Maria Del Pilar','A'),('Maria Ureta','A'),
+        ('Nature South','A'),('Pedro Nolasco','B'),('Pedro Nolasco Nuñez','B'),
+        ('Pedro Nolasco Riveros','A'),('Ramon Achurra','C'),('Santa Rosario','B'),
+        ('Santa Ximena','C'),('Sergio Soto Diaz','C'),('Soc. Inmobiliaria e Inversiones','A'),
+        ('Tuniche','A'),('Victor Padilla','A'),('Victor Padilla-Piso','C'),('Viña Siegel','A'),
+    ]
+    try:
+        if Cliente.query.count() == 0:
+            for nombre, grado in _CLIENTES:
+                db.session.add(Cliente(nombre=nombre, grado=grado))
+        if Productor.query.count() == 0:
+            for nombre, grado in _PRODUCTORES:
+                db.session.add(Productor(nombre=nombre, grado=grado))
+        db.session.commit()
+    except Exception as _e:
+        db.session.rollback()
 
 
 def _run_sync(flask_app):

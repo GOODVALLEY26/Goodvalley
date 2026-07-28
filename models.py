@@ -107,7 +107,6 @@ FRUIT_QUALITY_LABELS = {
     'deluxe':   'A',
     'premium':  'B',
     'estandar': 'C',
-    'base':     'D',
 }
 
 BIN_STATUS_LABELS = {
@@ -622,6 +621,20 @@ class AppSetting(db.Model):
     __tablename__ = 'app_settings'
     key   = db.Column(db.String(80), primary_key=True)
     value = db.Column(db.Text, nullable=True)
+
+
+class Cliente(db.Model):
+    __tablename__ = 'clientes_grado'
+    id     = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(200), unique=True, nullable=False)
+    grado  = db.Column(db.String(1),   nullable=True)
+
+
+class Productor(db.Model):
+    __tablename__ = 'productores_grado'
+    id     = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(200), unique=True, nullable=False)
+    grado  = db.Column(db.String(1),   nullable=True)
 
 
 class User(db.Model, UserMixin):
