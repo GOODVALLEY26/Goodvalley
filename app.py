@@ -1130,9 +1130,12 @@ def create_app():
         if q_grower:
             query = query.filter(Bin.producer_name == q_grower)
         if q_grade:
+            # case-insensitive: match bin producer_name against productores_grado names at that grade
             grade_names = [r[0] for r in db.session.query(Productor.nombre)
                            .filter(Productor.grado == q_grade).all()]
-            query = query.filter(Bin.producer_name.in_(grade_names))
+            query = query.filter(
+                db.func.upper(Bin.producer_name).in_([n.upper() for n in grade_names])
+            )
         if q_text:
             like = f'%{q_text}%'
             query = query.filter(
@@ -1150,18 +1153,15 @@ def create_app():
 
         bins = query.order_by(Bin.bin_identifier).limit(500).all()
 
-        producer_grade_map = {r[0]: r[1] for r in
+        # Case-insensitive grade map: keyed by UPPER name so bin lookup works regardless of casing
+        producer_grade_map = {r[0].upper(): r[1] for r in
                               db.session.query(Productor.nombre, Productor.grado).all()}
 
-        # Filter options
-        growers = [
-            r[0] for r in
-            db.session.query(Bin.producer_name)
-            .filter(Bin.producer_name != '')
-            .distinct()
-            .order_by(Bin.producer_name)
-            .all()
-        ]
+        # Filter options: merge bin producers + seeded productores_grado names (deduplicated, sorted)
+        bin_growers = {r[0] for r in db.session.query(Bin.producer_name)
+                       .filter(Bin.producer_name != '').distinct().all()}
+        seeded_growers = {r[0] for r in db.session.query(Productor.nombre).all()}
+        growers = sorted(bin_growers | seeded_growers, key=lambda s: s.upper())
         temporadas = [
             r[0] for r in
             db.session.query(Bin.temporada)
@@ -1302,7 +1302,7 @@ def create_app():
         _cli = Cliente.query.filter_by(nombre=order.customer).first()
         customer_grade = _cli.grado if _cli else None
         calidad_f = request.args.get('calidad_f', customer_grade or '')
-        producer_grade_map = {r[0]: r[1] for r in
+        producer_grade_map = {r[0].upper(): r[1] for r in
                               db.session.query(Productor.nombre, Productor.grado).all()}
 
         search_line_id = request.args.get('search_line', type=int)
@@ -1364,7 +1364,9 @@ def create_app():
                 if calidad_f:
                     _grade_names = [r[0] for r in db.session.query(Productor.nombre)
                                     .filter(Productor.grado == calidad_f).all()]
-                    q = q.filter(Bin.producer_name.in_(_grade_names))
+                    q = q.filter(
+                        db.func.upper(Bin.producer_name).in_([n.upper() for n in _grade_names])
+                    )
                 if line.drying:
                     q = q.filter(Bin.drying == line.drying)
                 if line.temporada:
