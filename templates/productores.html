@@ -5,7 +5,7 @@
 <div class="row-between" style="margin-bottom:10px">
   <div>
     <h1>Productores</h1>
-    <p class="muted">Grado del productor (A, B o C). Alimenta el grado de cada bin en inventario. Campo editable con contraseña.</p>
+    <p class="muted">Calidad del productor (A, B o C). Alimenta la calidad de cada bin en inventario. Campo editable con contraseña.</p>
   </div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <button class="btn btn-primary" id="edit-btn">Editar</button>
@@ -28,7 +28,7 @@
   <table class="grid tight">
     <thead><tr>
       <th>Productor</th>
-      <th style="text-align:center;width:120px">Grado</th>
+      <th style="text-align:center;width:120px">Calidad</th>
     </tr></thead>
     <tbody>
     {% for p in productores %}

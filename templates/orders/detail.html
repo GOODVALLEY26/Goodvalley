@@ -246,6 +246,15 @@
           style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:flex-end">
       <input type="hidden" name="search_line" value="{{ line.id }}">
       <div class="fld">
+        <label>Calidad</label>
+        <select name="calidad_f">
+          <option value="" {{ 'selected' if not calidad_f }}>Cualquiera</option>
+          <option value="A" {{ 'selected' if calidad_f == 'A' }}>A</option>
+          <option value="B" {{ 'selected' if calidad_f == 'B' }}>B</option>
+          <option value="C" {{ 'selected' if calidad_f == 'C' }}>C</option>
+        </select>
+      </div>
+      <div class="fld">
         <label>Calibre</label>
         <select name="caliber_f">
           {% if not is_serie_range %}
@@ -311,7 +320,7 @@
             <th><input type="checkbox" id="chk-all-{{ line.id }}"
                        onchange="document.querySelectorAll('.chk-{{ line.id }}').forEach(c=>c.checked=this.checked);updateSel{{ line.id }}()"></th>
             <th>Tarja</th><th>Producto</th><th>Calibre</th><th>Serie</th><th>Secado</th>
-            <th class="num">kg</th><th class="num">Hum</th><th>Productor</th><th>Temp.</th>
+            <th class="num">kg</th><th class="num">Hum</th><th>Productor</th><th style="text-align:center">Calidad</th><th>Temp.</th>
           </tr></thead>
           <tbody>
           {% for b in search_bins %}
@@ -330,10 +339,14 @@
               <td class="num">{{ b.weight_kg }}</td>
               <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
               <td>{{ b.producer_name }}</td>
+              <td style="text-align:center">
+                {% set _g = producer_grade_map.get(b.producer_name, '') %}
+                {% if _g %}<span class="pill" style="background:{% if _g=='A' %}#d1fae5{% elif _g=='B' %}#ede9fe{% else %}#fef3c7{% endif %};color:{% if _g=='A' %}#065f46{% elif _g=='B' %}#5b21b6{% else %}#92400e{% endif %};font-weight:700">{{ _g }}</span>{% else %}—{% endif %}
+              </td>
               <td>{{ b.temporada or '—' }}</td>
             </tr>
             {% if is_saldo and not loop.last and search_bins[loop.index].bin_identifier not in saldo_tarjas %}
-            <tr class="saldo-divider"><td colspan="10"></td></tr>
+            <tr class="saldo-divider"><td colspan="11"></td></tr>
             {% endif %}
           {% endfor %}
           </tbody>

@@ -1294,9 +1294,16 @@ def create_app():
 
     @app.route('/orders/<int:order_id>')
     def order_detail(order_id):
-        from models import Order, Bin, CALIBER_OPTIONS, DRYING_LABELS, Allocation, Excedente
+        from models import Order, Bin, CALIBER_OPTIONS, DRYING_LABELS, Allocation, Excedente, Cliente, Productor
 
         order = Order.query.get_or_404(order_id)
+
+        # Look up customer grade to pre-set calidad filter
+        _cli = Cliente.query.filter_by(nombre=order.customer).first()
+        customer_grade = _cli.grado if _cli else None
+        calidad_f = request.args.get('calidad_f', customer_grade or '')
+        producer_grade_map = {r[0]: r[1] for r in
+                              db.session.query(Productor.nombre, Productor.grado).all()}
 
         search_line_id = request.args.get('search_line', type=int)
         search_bins = []
@@ -1354,6 +1361,10 @@ def create_app():
                         q = q.filter(Bin.caliber == caliber_f)
                     if u_lb_f:
                         q = q.filter(Bin.u_lb == float(u_lb_f))
+                if calidad_f:
+                    _grade_names = [r[0] for r in db.session.query(Productor.nombre)
+                                    .filter(Productor.grado == calidad_f).all()]
+                    q = q.filter(Bin.producer_name.in_(_grade_names))
                 if line.drying:
                     q = q.filter(Bin.drying == line.drying)
                 if line.temporada:
@@ -1420,6 +1431,8 @@ def create_app():
             saldo_tarjas=saldo_tarjas,
             CALIBER_OPTIONS=CALIBER_OPTIONS,
             DRYING_LABELS=DRYING_LABELS,
+            calidad_f=calidad_f,
+            producer_grade_map=producer_grade_map,
         )
 
     # ── Order PDF helper (shared by download and email) ──────────────────────
@@ -3002,7 +3015,7 @@ def create_app():
             query = query.filter(Cliente.nombre.ilike(f'%{q}%'))
         results = query.limit(20).all()
         from flask import jsonify
-        return jsonify({'clientes': [{'nombre': c.nombre, 'grado': c.grado or ''} for c in results]})
+        return jsonify({'clientes': [{'nombre': c.nombre, 'grado': c.grado or '', 'potencial': c.potencial or ''} for c in results]})
 
     @app.route('/clientes')
     @login_required
@@ -3023,6 +3036,10 @@ def create_app():
                 c = db.session.get(Cliente, int(key[6:]))
                 if c:
                     c.grado = val.strip() or None
+            elif key.startswith('potencial_'):
+                c = db.session.get(Cliente, int(key[10:]))
+                if c:
+                    c.potencial = val.strip() or None
         db.session.commit()
         flash('Cambios guardados.', 'ok')
         return redirect(url_for('list_clientes'))
@@ -3419,6 +3436,7 @@ def _migrate(db_obj):
              GROUP BY ot
            ) sub
            WHERE o.ot = sub.ot""",
+        'ALTER TABLE clientes_grado ADD COLUMN IF NOT EXISTS potencial VARCHAR(1)',
     ]
     with db_obj.engine.connect() as conn:
         for sql in stmts:
@@ -3433,21 +3451,22 @@ def _migrate(db_obj):
 
 
 def _seed_grades():
-    """Seed clientes_grado and productores_grado tables if empty."""
+    """Seed clientes_grado and productores_grado tables if empty; backfill potencial."""
     from models import Cliente, Productor
+    # (nombre, grado/calidad, potencial)
     _CLIENTES = [
-        ('Abastos abascal','B'),('Aligonza','B'),('Anatolia','A'),
-        ('Arimex','A'),('Atlanta Poland','A'),('Basesur','B'),
-        ('Calconut','B'),('Chareon Watana','A'),('Corrfruit','B'),
-        ('Dry-Top Bélgica','A'),('First Grade','A'),('Frutos secos y supremos','B'),
-        ('Grupo Industrial Alimenticio','B'),('Hangzhou Zhenzhen','A'),('Helio','B'),
-        ('Inversiones Guatemala','B'),('JD Trade LTD','B'),('Kv Distributor','A'),
-        ('Liu Liu','A'),('Makar Bakalie','B'),('Mayan Foods','B'),
-        ('Mr. Pistachio','B'),('MS GROUP COMPANY','A'),('Nature Food','B'),
-        ('Ningbo','A'),('Noberasco','A'),('Nova fruit','A'),
-        ('Nueces Industriales','B'),('PT Dinamika','A'),('PT Wigas','A'),
-        ('Scalzo','B'),('Seeberger','A'),('Selectos de Arandas','B'),
-        ('Stone West','A'),('Tawanchie','A'),('Thanarak','A'),('Verde Valle','B'),
+        ('Abastos abascal','B','C'),('Aligonza','B','C'),('Anatolia','A',''),
+        ('Arimex','A','B'),('Atlanta Poland','A',''),('Basesur','B','B'),
+        ('Calconut','B',''),('Chareon Watana','A',''),('Corrfruit','B',''),
+        ('Dry-Top Bélgica','A','B'),('First Grade','A','B'),('Frutos secos y supremos','B','C'),
+        ('Grupo Industrial Alimenticio','B','B'),('Hangzhou Zhenzhen','A',''),('Helio','B','B'),
+        ('Inversiones Guatemala','B','C'),('JD Trade LTD','B',''),('Kv Distributor','A',''),
+        ('Liu Liu','A',''),('Makar Bakalie','B',''),('Mayan Foods','B','C'),
+        ('Mr. Pistachio','B',''),('MS GROUP COMPANY','A',''),('Nature Food','B',''),
+        ('Ningbo','A',''),('Noberasco','A',''),('Nova fruit','A','B'),
+        ('Nueces Industriales','B','C'),('PT Dinamika','A',''),('PT Wigas','A',''),
+        ('Scalzo','B',''),('Seeberger','A',''),('Selectos de Arandas','B','C'),
+        ('Stone West','A',''),('Tawanchie','A',''),('Thanarak','A',''),('Verde Valle','B',''),
     ]
     _PRODUCTORES = [
         ('Agr. Maipo Sur','B'),('Agricola Mai','A'),('Agricola Mai-Tuniche','A'),
@@ -3465,8 +3484,14 @@ def _seed_grades():
     ]
     try:
         if Cliente.query.count() == 0:
-            for nombre, grado in _CLIENTES:
-                db.session.add(Cliente(nombre=nombre, grado=grado))
+            for nombre, grado, potencial in _CLIENTES:
+                db.session.add(Cliente(nombre=nombre, grado=grado, potencial=potencial or None))
+        else:
+            # Backfill potencial for existing rows that don't have it yet
+            for nombre, grado, potencial in _CLIENTES:
+                c = Cliente.query.filter_by(nombre=nombre).first()
+                if c and c.potencial is None and potencial:
+                    c.potencial = potencial
         if Productor.query.count() == 0:
             for nombre, grado in _PRODUCTORES:
                 db.session.add(Productor(nombre=nombre, grado=grado))

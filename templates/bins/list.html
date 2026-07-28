@@ -43,7 +43,7 @@
     </select>
   </div>
   <div class="fld">
-    <label>Grado Productor</label>
+    <label>Calidad</label>
     <select name="grade">
       <option value="">Todos</option>
       <option value="A" {{ 'selected' if q_grade == 'A' }}>A</option>
@@ -85,7 +85,7 @@
   <thead><tr>
     <th>Tarja</th><th>Producto</th><th>Calibre</th><th>Serie</th><th>Secado</th>
     <th class="num">kg</th><th class="num">Hum %</th>
-    <th>Productor</th><th style="text-align:center">Grado</th><th>Temp.</th><th>Estado</th>
+    <th>Productor</th><th style="text-align:center">Calidad</th><th>Temp.</th><th>Estado</th>
   </tr></thead>
   <tbody>
   {% for b in bins %}

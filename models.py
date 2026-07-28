@@ -625,9 +625,10 @@ class AppSetting(db.Model):
 
 class Cliente(db.Model):
     __tablename__ = 'clientes_grado'
-    id     = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(200), unique=True, nullable=False)
-    grado  = db.Column(db.String(1),   nullable=True)
+    id        = db.Column(db.Integer, primary_key=True)
+    nombre    = db.Column(db.String(200), unique=True, nullable=False)
+    grado     = db.Column(db.String(1),   nullable=True)   # estado / calidad
+    potencial = db.Column(db.String(1),   nullable=True)
 
 
 class Productor(db.Model):

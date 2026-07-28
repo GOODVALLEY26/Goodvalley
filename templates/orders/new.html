@@ -27,9 +27,14 @@
                    background:var(--card);border:1px solid var(--border);
                    border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.18);max-height:220px;overflow-y:auto"></ul>
       </div>
-      <div class="fld" style="min-width:80px;max-width:110px">
-        <label>Grado Cliente</label>
+      <div class="fld" style="min-width:70px;max-width:95px">
+        <label>Estado</label>
         <input type="text" id="customer-grade" readonly placeholder="—"
+               style="background:var(--bg);color:var(--purple);font-weight:700;text-align:center;cursor:default">
+      </div>
+      <div class="fld" style="min-width:70px;max-width:95px">
+        <label>Potencial</label>
+        <input type="text" id="customer-potencial" readonly placeholder="—"
                style="background:var(--bg);color:var(--purple);font-weight:700;text-align:center;cursor:default">
       </div>
       <div class="fld grow" style="min-width:140px">
@@ -699,10 +704,12 @@ var _clienteTimer = null;
 var _clienteSuggestions = document.getElementById('cliente-suggestions');
 var _clienteInput = document.getElementById('customer-input');
 var _gradeInput = document.getElementById('customer-grade');
+var _potencialInput = document.getElementById('customer-potencial');
 
 function gvClienteSearch(val) {
   clearTimeout(_clienteTimer);
   _gradeInput.value = '';
+  _potencialInput.value = '';
   if (!val.trim()) { _clienteSuggestions.style.display = 'none'; return; }
   _clienteTimer = setTimeout(function() {
     fetch('/api/clientes?q=' + encodeURIComponent(val))
@@ -712,13 +719,16 @@ function gvClienteSearch(val) {
         if (!d.clientes || !d.clientes.length) { _clienteSuggestions.style.display = 'none'; return; }
         d.clientes.forEach(function(c) {
           var li = document.createElement('li');
-          li.style.cssText = 'padding:8px 14px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center';
-          li.innerHTML = '<span>' + c.nombre + '</span>'
-            + (c.grado ? '<span style="font-weight:700;color:var(--purple);background:var(--lavender);border-radius:4px;padding:1px 7px">' + c.grado + '</span>' : '');
+          li.style.cssText = 'padding:8px 14px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px';
+          var badges = '';
+          if (c.grado) badges += '<span style="font-weight:700;color:var(--purple);background:var(--lavender);border-radius:4px;padding:1px 7px">' + c.grado + '</span>';
+          if (c.potencial) badges += '<span style="font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 6px" title="Potencial">▲' + c.potencial + '</span>';
+          li.innerHTML = '<span style="flex:1">' + c.nombre + '</span><span style="display:flex;gap:4px">' + badges + '</span>';
           li.addEventListener('mousedown', function(e) {
             e.preventDefault();
             _clienteInput.value = c.nombre;
             _gradeInput.value = c.grado || '';
+            _potencialInput.value = c.potencial || '';
             _clienteSuggestions.style.display = 'none';
           });
           li.addEventListener('mouseenter', function() { this.style.background = 'var(--lavender)'; });

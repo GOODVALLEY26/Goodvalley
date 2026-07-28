@@ -5,7 +5,7 @@
 <div class="row-between" style="margin-bottom:10px">
   <div>
     <h1>Clientes</h1>
-    <p class="muted">Grado del cliente (A, B o C). Campo editable con contraseña.</p>
+    <p class="muted">Calidad y potencial de cada cliente (A, B o C). Editable con contraseña.</p>
   </div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <button class="btn btn-primary" id="edit-btn">Editar</button>
@@ -28,7 +28,8 @@
   <table class="grid tight">
     <thead><tr>
       <th>Cliente</th>
-      <th style="text-align:center;width:120px">Grado</th>
+      <th style="text-align:center;width:120px">Calidad</th>
+      <th style="text-align:center;width:120px">Potencial</th>
     </tr></thead>
     <tbody>
     {% for c in clientes %}
@@ -42,6 +43,16 @@
           <option value="A" {{ 'selected' if c.grado == 'A' }}>A</option>
           <option value="B" {{ 'selected' if c.grado == 'B' }}>B</option>
           <option value="C" {{ 'selected' if c.grado == 'C' }}>C</option>
+        </select>
+      </td>
+      <td style="text-align:center">
+        <select name="potencial_{{ c.id }}" class="grade-select" disabled
+                style="width:80px;text-align:center;border:1px solid var(--border);
+                       border-radius:6px;padding:4px 6px;background:var(--card);color:var(--fg);font-size:13px;font-weight:700">
+          <option value="" {{ 'selected' if not c.potencial }}>—</option>
+          <option value="A" {{ 'selected' if c.potencial == 'A' }}>A</option>
+          <option value="B" {{ 'selected' if c.potencial == 'B' }}>B</option>
+          <option value="C" {{ 'selected' if c.potencial == 'C' }}>C</option>
         </select>
       </td>
     </tr>
