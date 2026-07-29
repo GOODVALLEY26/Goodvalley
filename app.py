@@ -1135,26 +1135,20 @@ def create_app():
             if gf and gf.filename:
                 try:
                     guia_grades_data = _json.load(gf)
+                    GuiaGrade.query.delete()
+                    db.session.flush()
                     for g in guia_grades_data:
                         guia = str(g.get('guia') or '').strip()
                         grade = str(g.get('grade') or '').strip()
                         if not guia or not grade:
                             continue
-                        existing = GuiaGrade.query.filter_by(guia=guia).first()
-                        if existing:
-                            existing.grade = grade
-                            existing.clasificacion = g.get('clasificacion') or ''
-                            existing.fecha = g.get('fecha') or ''
-                            existing.productor = g.get('productor') or ''
-                            grades_updated += 1
-                        else:
-                            db.session.add(GuiaGrade(
-                                guia=guia, grade=grade,
-                                clasificacion=g.get('clasificacion') or '',
-                                fecha=g.get('fecha') or '',
-                                productor=g.get('productor') or '',
-                            ))
-                            grades_added += 1
+                        db.session.add(GuiaGrade(
+                            guia=guia, grade=grade,
+                            clasificacion=g.get('clasificacion') or '',
+                            fecha=g.get('fecha') or '',
+                            productor=g.get('productor') or '',
+                        ))
+                        grades_added += 1
                     db.session.commit()
                 except Exception as _ge:
                     db.session.rollback()

@@ -181,46 +181,94 @@ def _transform_pallet_rows(raw_rows):
     return pallets
 
 
-def parse_quality_dashboard():
-    """Read the Quality Dashboard HTML file and extract guia → grade mappings."""
-    import glob as _glob
-    patterns = [
-        str(Path.home() / 'Library/Containers/net.whatsapp.WhatsApp/Data/tmp/documents/**/Guia_Materia_Prima*.html'),
-        str(Path.home() / 'Desktop/quality_dashboard.html'),
-        str(Path.home() / 'Desktop/Guia_Materia_Prima*.html'),
-    ]
-    path = None
-    for pat in patterns:
-        matches = _glob.glob(pat, recursive=True)
-        if matches:
-            path = max(matches, key=os.path.getmtime)
-            break
-    if not path:
-        print('⚠ Quality Dashboard no encontrado — omitiendo grades.')
+def parse_recepciones_danos():
+    """Read Recepciones Daños Excel, return ticket-level grade records (N° Ticket stored as guia)."""
+    try:
+        import openpyxl
+    except ImportError:
+        print('⚠ openpyxl no instalado — ejecuta: pip install openpyxl')
         return []
-    print(f'▶ Leyendo Quality Dashboard: {path}')
-    with open(path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    script_text = content[content.find('<script>')+8:content.find('</script>')]
-    m = re.search(r'const RECEPCIONES\s*=\s*(\[.*?\]);', script_text, re.DOTALL)
-    if not m:
-        print('⚠ RECEPCIONES no encontrado en Quality Dashboard.')
+    path = Path.home() / 'Desktop' / 'Recepciones Daños.xlsx'
+    if not path.exists():
+        print(f'⚠ {path.name} no encontrado en Desktop.')
         return []
-    recepciones = json.loads(m.group(1))
+    print(f'▶ Leyendo {path.name}...')
+    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+    ws = wb['Hoja1']
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+    header_idx = next((i for i, r in enumerate(rows) if r[1] == 'Fecha'), None)
+    if header_idx is None:
+        print('⚠ Header no encontrado en Recepciones Daños.xlsx')
+        return []
     grades = []
-    for r in recepciones:
-        guia = str(r.get('nGuia') or '').strip()
-        grade = str(r.get('final') or '').strip()
-        if guia and grade:
-            grades.append({
-                'guia': guia,
-                'grade': grade,
-                'clasificacion': str(r.get('clasificacion') or '').strip(),
-                'fecha': str(r.get('fecha') or '').strip(),
-                'productor': str(r.get('productor') or '').strip(),
-            })
-    print(f'✓ Quality Dashboard: {len(grades)} guias con grado extraídos')
+    seen = set()
+    for r in rows[header_idx + 1:]:
+        if r[4] is None:
+            continue
+        ticket = r[5]
+        grade  = str(r[21]).strip() if r[21] else ''
+        if not ticket or not grade:
+            continue
+        ticket_str = str(int(ticket)) if isinstance(ticket, float) else str(ticket).strip()
+        if ticket_str in seen:
+            continue
+        seen.add(ticket_str)
+        grades.append({
+            'guia':          ticket_str,
+            'grade':         grade,
+            'clasificacion': str(r[17]).strip() if r[17] else '',
+            'fecha':         str(r[1]).strip() if r[1] else '',
+            'productor':     str(r[3]).strip() if r[3] else '',
+        })
+    print(f'✓ Recepciones Daños: {len(grades)} tickets con grado extraídos')
     return grades
+
+
+def parse_informe_recepciones():
+    """Read Informe de recepciones Excel, return IDPSJ→LOTE records (IDPSJ stored as guia)."""
+    try:
+        import openpyxl
+    except ImportError:
+        print('⚠ openpyxl no instalado — ejecuta: pip install openpyxl')
+        return []
+    path = Path.home() / 'Desktop' / 'Informe de recepciones.xlsx'
+    if not path.exists():
+        print(f'⚠ {path.name} no encontrado en Desktop.')
+        return []
+    print(f'▶ Leyendo {path.name}...')
+    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+    header = list(rows[1])
+    data   = rows[2:]
+    idpsj_idx = header.index('IDPSJ')
+    lote_idx  = header.index('LOTE')
+    fecha_idx = header.index('FECHAPRODUCCION')
+    prod_idx  = header.index('PRODUCTOR')
+    bins_idx  = header.index('CANTIDADBINS') if 'CANTIDADBINS' in header else None
+    recepciones = []
+    seen = set()
+    for r in data:
+        idpsj = r[idpsj_idx]
+        lote  = str(r[lote_idx]).strip() if r[lote_idx] else ''
+        if not idpsj or not lote:
+            continue
+        ticket_str = str(int(idpsj)) if isinstance(idpsj, float) else str(idpsj).strip()
+        key = (ticket_str, lote)
+        if key in seen:
+            continue
+        seen.add(key)
+        recepciones.append({
+            'guia':         ticket_str,
+            'lote':         lote,
+            'fecha':        str(r[fecha_idx]).strip() if r[fecha_idx] else '',
+            'productor':    str(r[prod_idx]).strip() if r[prod_idx] else '',
+            'cantidadbins': int(r[bins_idx]) if bins_idx is not None and r[bins_idx] else 0,
+        })
+    print(f'✓ Informe de recepciones: {len(recepciones)} registros (ticket+lote) extraídos')
+    return recepciones
 
 
 def _transform_recepcion_rows(raw_rows):
@@ -687,20 +735,17 @@ async def main():
             except Exception as _pe:
                 print(f'⚠ Error scrapeando pallets: {_pe}')
 
-        # ── 8. Quality Dashboard grades ───────────────────────────────────────────
-        guia_grades = parse_quality_dashboard()
+        # ── 8. Ticket grades from Recepciones Daños Excel ────────────────────────
+        guia_grades = parse_recepciones_danos()
         if guia_grades:
             GUIA_GRADES_FILE.write_text(json.dumps(guia_grades, indent=2, ensure_ascii=False))
-            print(f'✓ Guia grades guardados en {GUIA_GRADES_FILE}')
+            print(f'✓ Ticket grades guardados en {GUIA_GRADES_FILE}')
 
-        # ── 9. Recepciones ────────────────────────────────────────────────────────
-        recepciones = []
-        try:
-            recepciones = await scrape_recepciones()
+        # ── 9. Lote mapping from Informe de Recepciones Excel ────────────────────
+        recepciones = parse_informe_recepciones()
+        if recepciones:
             RECEPCIONES_FILE.write_text(json.dumps(recepciones, indent=2, ensure_ascii=False))
             print(f'✓ Recepciones guardados en {RECEPCIONES_FILE}')
-        except Exception as _re:
-            print(f'⚠ Error scrapeando recepciones: {_re}')
 
         # ── 10. Upload to Goodvalley (3 retries) ──────────────────────────────────
         if os.environ.get('GV_NO_UPLOAD'):
