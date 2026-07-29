@@ -456,8 +456,20 @@ def create_app():
                         db.session.bulk_save_objects(new_batch)
                     db.session.commit()
 
+                    # Reconcile: available bins absent from this scrape → gone
+                    seen_ids = {str(b.get('bin_identifier', '')).strip() for b in bins_data}
+                    gone_ids = set(existing_map.keys()) - seen_ids
+                    gone_count = 0
+                    if gone_ids:
+                        db.session.query(Bin).filter(
+                            Bin.bin_identifier.in_(gone_ids),
+                            Bin.status == 'available'
+                        ).update({'status': 'gone'}, synchronize_session=False)
+                        db.session.commit()
+                        gone_count = len(gone_ids)
+
                 with open(log_path, 'a') as lf:
-                    lf.write(f'✓ {added} nuevos, {updated} actualizados, {skipped} omitidos.\n')
+                    lf.write(f'✓ {added} nuevos, {updated} actualizados, {skipped} omitidos, {gone_count} marcados gone.\n')
                     lf.flush()
 
                 # ── Import pallets ─────────────────────────────────────────
@@ -672,6 +684,18 @@ def create_app():
                             db.session.bulk_save_objects(new_batch)
                         db.session.commit()
 
+                        # Reconcile: available bins absent from this scrape → gone
+                        seen_ids = {str(b.get('bin_identifier', '')).strip() for b in bins_data}
+                        gone_ids = set(existing_map.keys()) - seen_ids
+                        gone_count = 0
+                        if gone_ids:
+                            db.session.query(Bin).filter(
+                                Bin.bin_identifier.in_(gone_ids),
+                                Bin.status == 'available'
+                            ).update({'status': 'gone'}, synchronize_session=False)
+                            db.session.commit()
+                            gone_count = len(gone_ids)
+
                         # Auto-allocate new bins via OT → order line match
                         alloc_count = 0
                         if to_allocate:
@@ -705,7 +729,7 @@ def create_app():
                     with open(log_path, 'a') as lf:
                         lf.write(
                             f'✓ Bins: {added} nuevos, {updated} actualizados, '
-                            f'{skipped} omitidos, {alloc_count} auto-asignados.\n'
+                            f'{skipped} omitidos, {gone_count} marcados gone, {alloc_count} auto-asignados.\n'
                         )
                         lf.flush()
                 except Exception as e:
