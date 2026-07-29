@@ -1209,8 +1209,37 @@ def create_app():
         q_status    = request.args.get('status', '')
         q_temporada = request.args.get('temporada', '')
         q_grower    = request.args.get('grower', '')
-        q_grade     = request.args.get('grade', '')
+        q_grade_raw = request.args.get('grade', '').strip()
         q_text      = request.args.get('q', '').strip()
+
+        # Parse grade sub-filter: 'A_insp' → ('A','insp'), 'A_comp' → ('A','comp'), 'A' → ('A','all')
+        if q_grade_raw.endswith('_insp'):
+            q_grade, q_grade_src = q_grade_raw[:-5], 'insp'
+        elif q_grade_raw.endswith('_comp'):
+            q_grade, q_grade_src = q_grade_raw[:-5], 'comp'
+        else:
+            q_grade, q_grade_src = q_grade_raw, 'all'
+
+        # Build Daños producer → most common grade (from GuiaGrade.productor field)
+        from collections import defaultdict as _dd, Counter as _Ctr
+        _gg_rows = db.session.query(GuiaGrade.productor, GuiaGrade.grade).filter(
+            GuiaGrade.productor != None, GuiaGrade.productor != '').all()
+        _danos_votes = _dd(list)
+        for _dp, _dg in _gg_rows:
+            _danos_votes[_dp.upper()].append(_dg)
+        _danos_prod_grade = {_p: _Ctr(_gs).most_common(1)[0][0] for _p, _gs in _danos_votes.items()}
+
+        # Build producer_grade_map: pWarehouse producer name (upper) → grade
+        # Uses substring matching: "CASABLANCA" in "SANTA AMELIA CASABLANCA" → grade A
+        _pw_names = {r[0] for r in db.session.query(db.distinct(Bin.producer_name))
+                     .filter(Bin.producer_name != None, Bin.producer_name != '').all()}
+        producer_grade_map = {}
+        for _pw in _pw_names:
+            _u = _pw.upper()
+            for _dp, _dg in _danos_prod_grade.items():
+                if _dp in _u:
+                    producer_grade_map[_u] = _dg
+                    break
 
         query = Bin.query
 
@@ -1225,22 +1254,27 @@ def create_app():
         if q_grower:
             query = query.filter(Bin.producer_name == q_grower)
         if q_grade:
-            # Primary: filter by guia-based grade (lote → guia → grade)
             _grade_guias = [r[0] for r in db.session.query(GuiaGrade.guia)
                             .filter(GuiaGrade.grade == q_grade).all()]
             _grade_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
                             .filter(RecepcionLote.guia.in_(_grade_guias)).all()] if _grade_guias else []
-            # Fallback: producer-based grade for bins without a guia-grade lote
             _all_graded_lotes = [r[0] for r in db.session.query(RecepcionLote.lote).all()]
-            _grade_producers = [r[0].upper() for r in db.session.query(Productor.nombre)
-                                .filter(Productor.grado == q_grade).all()]
-            query = query.filter(db.or_(
-                Bin.lote.in_(_grade_lotes),
-                db.and_(
+            _comp_pw = [pw for pw, g in producer_grade_map.items() if g == q_grade]
+            if q_grade_src == 'insp':
+                query = query.filter(Bin.lote.in_(_grade_lotes))
+            elif q_grade_src == 'comp':
+                query = query.filter(db.and_(
                     ~Bin.lote.in_(_all_graded_lotes),
-                    db.func.upper(Bin.producer_name).in_(_grade_producers)
-                )
-            ))
+                    db.func.upper(Bin.producer_name).in_(_comp_pw)
+                ))
+            else:
+                query = query.filter(db.or_(
+                    Bin.lote.in_(_grade_lotes),
+                    db.and_(
+                        ~Bin.lote.in_(_all_graded_lotes),
+                        db.func.upper(Bin.producer_name).in_(_comp_pw)
+                    )
+                ))
         if q_text:
             like = f'%{q_text}%'
             query = query.filter(
@@ -1258,12 +1292,11 @@ def create_app():
 
         bins = query.order_by(Bin.bin_identifier).limit(500).all()
 
-        # Build lote → grade map (guia chain), fallback to producer grade
+        # Build lote → grade map via ticket chain (guia field = ticket number)
         _rec_map   = {r[0]: r[1] for r in db.session.query(RecepcionLote.lote, RecepcionLote.guia).all()}
         _grade_map = {r[0]: r[1] for r in db.session.query(GuiaGrade.guia, GuiaGrade.grade).all()}
         lote_grade_map = {lote: _grade_map[guia] for lote, guia in _rec_map.items() if guia in _grade_map}
-        producer_grade_map = {r[0].upper(): r[1] for r in
-                              db.session.query(Productor.nombre, Productor.grado).all()}
+        # producer_grade_map already built above via Daños substring matching
 
         # Filter options: merge bin producers + seeded productores_grado names (deduplicated, sorted)
         bin_growers = {r[0] for r in db.session.query(Bin.producer_name)
@@ -1290,7 +1323,7 @@ def create_app():
             lote_grade_map=lote_grade_map,
             producer_grade_map=producer_grade_map,
             q_caliber=q_caliber, q_drying=q_drying, q_status=q_status,
-            q_temporada=q_temporada, q_grower=q_grower, q_grade=q_grade, q_text=q_text,
+            q_temporada=q_temporada, q_grower=q_grower, q_grade=q_grade_raw, q_text=q_text,
         )
 
     # ── Orders ────────────────────────────────────────────────────────────────

@@ -46,9 +46,21 @@
     <label>Calidad</label>
     <select name="grade">
       <option value="">Todos</option>
-      <option value="A" {{ 'selected' if q_grade == 'A' }}>A</option>
-      <option value="B" {{ 'selected' if q_grade == 'B' }}>B</option>
-      <option value="C" {{ 'selected' if q_grade == 'C' }}>C</option>
+      <optgroup label="── Grado A">
+        <option value="A"      {{ 'selected' if q_grade == 'A' }}>A — Todos</option>
+        <option value="A_insp" {{ 'selected' if q_grade == 'A_insp' }}>A — Solo inspeccionado</option>
+        <option value="A_comp" {{ 'selected' if q_grade == 'A_comp' }}>A* — Solo estimado</option>
+      </optgroup>
+      <optgroup label="── Grado B">
+        <option value="B"      {{ 'selected' if q_grade == 'B' }}>B — Todos</option>
+        <option value="B_insp" {{ 'selected' if q_grade == 'B_insp' }}>B — Solo inspeccionado</option>
+        <option value="B_comp" {{ 'selected' if q_grade == 'B_comp' }}>B* — Solo estimado</option>
+      </optgroup>
+      <optgroup label="── Grado C">
+        <option value="C"      {{ 'selected' if q_grade == 'C' }}>C — Todos</option>
+        <option value="C_insp" {{ 'selected' if q_grade == 'C_insp' }}>C — Solo inspeccionado</option>
+        <option value="C_comp" {{ 'selected' if q_grade == 'C_comp' }}>C* — Solo estimado</option>
+      </optgroup>
     </select>
   </div>
   <div class="fld grow">
