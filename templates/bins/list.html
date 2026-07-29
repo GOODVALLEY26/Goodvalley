@@ -81,6 +81,11 @@
 </p>
 
 {% if bins %}
+<p class="muted" style="font-size:0.82rem;margin-bottom:6px">
+  Calidad:
+  <span class="pill" style="background:#d1fae5;color:#065f46;font-weight:700;font-size:0.78rem">A</span> inspeccionado ·
+  <span class="pill" style="background:transparent;color:#065f46;font-weight:700;border:2px dashed #065f46;font-size:0.78rem">A*</span> grado estimado por productor
+</p>
 <table class="grid">
   <thead><tr>
     <th>Tarja</th><th>Producto</th><th>Calibre</th><th>Serie</th><th>Secado</th>
@@ -103,9 +108,17 @@
       <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
       <td>{{ b.producer_name or '—' }}</td>
       <td style="text-align:center">
-        {% set _g = lote_grade_map.get(b.lote or '', producer_grade_map.get((b.producer_name or '').upper(), '')) %}
+        {% set _g_insp = lote_grade_map.get(b.lote or '') %}
+        {% set _g_prod = producer_grade_map.get((b.producer_name or '').upper(), '') %}
+        {% set _g = _g_insp or _g_prod %}
         {% if _g %}
-          <span class="pill" style="background:{% if _g=='A' %}#d1fae5{% elif _g=='B' %}#ede9fe{% else %}#fef3c7{% endif %};color:{% if _g=='A' %}#065f46{% elif _g=='B' %}#5b21b6{% else %}#92400e{% endif %};font-weight:700">{{ _g }}</span>
+          {% set _bg  = '#d1fae5' if _g=='A' else ('#ede9fe' if _g=='B' else '#fef3c7') %}
+          {% set _col = '#065f46' if _g=='A' else ('#5b21b6' if _g=='B' else '#92400e') %}
+          {% if _g_insp %}
+            <span class="pill" style="background:{{ _bg }};color:{{ _col }};font-weight:700" title="Grado por inspección directa">{{ _g }}</span>
+          {% else %}
+            <span class="pill" style="background:transparent;color:{{ _col }};font-weight:700;border:2px dashed {{ _col }}" title="Grado estimado — sin inspección directa">{{ _g }}*</span>
+          {% endif %}
         {% else %}—{% endif %}
       </td>
       <td>{{ b.temporada or '—' }}</td>
