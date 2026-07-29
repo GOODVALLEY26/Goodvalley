@@ -340,7 +340,7 @@
               <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
               <td>{{ b.producer_name }}</td>
               <td style="text-align:center">
-                {% set _g = producer_grade_map.get((b.producer_name or '').upper(), '') %}
+                {% set _g = lote_grade_map.get(b.lote or '', producer_grade_map.get((b.producer_name or '').upper(), '')) %}
                 {% if _g %}<span class="pill" style="background:{% if _g=='A' %}#d1fae5{% elif _g=='B' %}#ede9fe{% else %}#fef3c7{% endif %};color:{% if _g=='A' %}#065f46{% elif _g=='B' %}#5b21b6{% else %}#92400e{% endif %};font-weight:700">{{ _g }}</span>{% else %}—{% endif %}
               </td>
               <td>{{ b.temporada or '—' }}</td>

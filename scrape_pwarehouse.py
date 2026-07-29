@@ -18,6 +18,8 @@ PASSWORD        = os.environ.get('PWAREHOUSE_PASS', '')
 GOODVALLEY_URL  = os.environ.get('GOODVALLEY_URL',  'https://web-production-2eea96.up.railway.app')
 OUTPUT_FILE          = Path(os.environ.get('GV_OUTPUT', str(Path.home() / 'Desktop' / 'bins_scraped.json')))
 PALLETS_OUTPUT_FILE  = Path(os.environ.get('GV_PALLETS_OUT', ''))
+RECEPCIONES_FILE     = OUTPUT_FILE.parent / 'recepciones.json'
+GUIA_GRADES_FILE     = OUTPUT_FILE.parent / 'guia_grades.json'
 SCREENSHOT_DIR       = Path('/tmp/gv_scraper')
 
 _CALIBER_RE = re.compile(r'(\d{2,3}/\d{2,3}|\d{2,3}\+)')
@@ -120,6 +122,7 @@ def _transform_rows(raw_rows):
             'contenedor': cont,
             'producer_name': str(_rv(row, 12) or '').strip(),
             'temporada': temporada,
+            'lote': str(_rv(row, 4) or '').strip(),
         })
     return bins
 
@@ -176,6 +179,217 @@ def _transform_pallet_rows(raw_rows):
             's_pallet_clase':   s_pallet_clase,
         })
     return pallets
+
+
+def parse_quality_dashboard():
+    """Read the Quality Dashboard HTML file and extract guia → grade mappings."""
+    import glob as _glob
+    patterns = [
+        str(Path.home() / 'Library/Containers/net.whatsapp.WhatsApp/Data/tmp/documents/**/Guia_Materia_Prima*.html'),
+        str(Path.home() / 'Desktop/quality_dashboard.html'),
+        str(Path.home() / 'Desktop/Guia_Materia_Prima*.html'),
+    ]
+    path = None
+    for pat in patterns:
+        matches = _glob.glob(pat, recursive=True)
+        if matches:
+            path = max(matches, key=os.path.getmtime)
+            break
+    if not path:
+        print('⚠ Quality Dashboard no encontrado — omitiendo grades.')
+        return []
+    print(f'▶ Leyendo Quality Dashboard: {path}')
+    with open(path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    script_text = content[content.find('<script>')+8:content.find('</script>')]
+    m = re.search(r'const RECEPCIONES\s*=\s*(\[.*?\]);', script_text, re.DOTALL)
+    if not m:
+        print('⚠ RECEPCIONES no encontrado en Quality Dashboard.')
+        return []
+    recepciones = json.loads(m.group(1))
+    grades = []
+    for r in recepciones:
+        guia = str(r.get('nGuia') or '').strip()
+        grade = str(r.get('final') or '').strip()
+        if guia and grade:
+            grades.append({
+                'guia': guia,
+                'grade': grade,
+                'clasificacion': str(r.get('clasificacion') or '').strip(),
+                'fecha': str(r.get('fecha') or '').strip(),
+                'productor': str(r.get('productor') or '').strip(),
+            })
+    print(f'✓ Quality Dashboard: {len(grades)} guias con grado extraídos')
+    return grades
+
+
+def _transform_recepcion_rows(raw_rows):
+    recepciones = []
+    seen = set()
+    for row in raw_rows:
+        if isinstance(row, dict):
+            guia = str(row.get('GUIA_PSJE1') or row.get('GUIA') or row.get(4) or row.get('4') or '').strip()
+            lote = str(row.get('LOTE') or row.get(9) or row.get('9') or '').strip()
+            fecha = str(row.get('FECHAPRODUCCION') or row.get(0) or row.get('0') or '').strip()
+            productor = str(row.get('PRODUCTOR') or row.get(2) or row.get('2') or '').strip()
+            try:
+                cantidadbins = int(row.get('CANTIDADBINS') or row.get(11) or row.get('11') or 0)
+            except (ValueError, TypeError):
+                cantidadbins = 0
+        else:
+            guia = str(_rv(row, 4) or '').strip()
+            lote = str(_rv(row, 9) or '').strip()
+            fecha = str(_rv(row, 0) or '').strip()
+            productor = str(_rv(row, 2) or '').strip()
+            try:
+                cantidadbins = int(_rv(row, 11) or 0)
+            except (ValueError, TypeError):
+                cantidadbins = 0
+        if not guia or not lote:
+            continue
+        key = (guia, lote)
+        if key in seen:
+            continue
+        seen.add(key)
+        recepciones.append({
+            'guia': guia,
+            'lote': lote,
+            'fecha': fecha,
+            'productor': productor,
+            'cantidadbins': cantidadbins,
+        })
+    return recepciones
+
+
+async def scrape_recepciones():
+    import datetime as _dt
+    today_str = _dt.date.today().strftime('%d-%m-%Y')
+    from_str = '01-01-2025'
+    print(f'\n[{_dt.datetime.now():%Y-%m-%d %H:%M:%S}] Scrapeando Recepciones ({from_str} → {today_str})...')
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        )
+        page = await browser.new_page()
+        for attempt in range(1, 4):
+            try:
+                await page.goto(PWAREHOUSE_URL, timeout=30000)
+                await page.wait_for_load_state('networkidle')
+                break
+            except Exception as e:
+                if attempt == 3:
+                    raise RuntimeError(f'No se pudo conectar a pWarehouse (recepciones): {e}')
+                await asyncio.sleep(5)
+        await page.locator('input[name="O2F"]').fill(RUT)
+        await page.locator('input[name="O17"]').fill(PASSWORD)
+        btn = page.locator('#O23_id')
+        if await btn.count():
+            await btn.click()
+        else:
+            await click_by_text(page, 'Aceptar')
+        await page.wait_for_load_state('networkidle', timeout=20000)
+        await page.wait_for_timeout(3000)
+        for _ in range(8):
+            if not await page.locator('input[name="O2F"]').count():
+                break
+            await page.wait_for_timeout(1000)
+
+        print('▶ [Recepciones] Navegando al menú...')
+        await page.wait_for_timeout(3000)
+        found = False
+        for label in ('Recepciones', 'Informe de recepciones', 'Recepción', 'Recepcion', 'Informe Recepciones'):
+            if await click_by_text(page, label):
+                found = True
+                print(f'  [Recepciones] Menú "{label}" encontrado')
+                break
+        if not found:
+            await browser.close()
+            raise RuntimeError('[Recepciones] Menú no encontrado — verifica la etiqueta en pWarehouse.')
+
+        await page.wait_for_timeout(3000)
+        await page.wait_for_load_state('networkidle', timeout=15000)
+
+        # Fill date range — try common selectors for UniGUI date inputs
+        for sel in ('input[placeholder*="desde" i]', 'input[name*="desde" i]', 'input[name*="from" i]', 'input[name*="inicio" i]'):
+            loc = page.locator(sel)
+            if await loc.count():
+                await loc.first.triple_click()
+                await loc.first.fill(from_str)
+                break
+        for sel in ('input[placeholder*="hasta" i]', 'input[name*="hasta" i]', 'input[name*="to" i]', 'input[name*="fin" i]'):
+            loc = page.locator(sel)
+            if await loc.count():
+                await loc.first.triple_click()
+                await loc.first.fill(today_str)
+                break
+
+        all_rows = []
+        data_total = [None]
+        captured_url = [None]
+
+        async def on_response(response):
+            url = response.url
+            if '/HandleEvent' not in url:
+                return
+            try:
+                text = await response.text()
+            except Exception:
+                return
+            if not text or not text.startswith('{'):
+                return
+            try:
+                obj = json.loads(text)
+            except Exception:
+                return
+            rows = obj.get('rows')
+            if not isinstance(rows, list) or not rows:
+                return
+            if captured_url[0] is None:
+                captured_url[0] = url
+            if data_total[0] is None:
+                data_total[0] = int(obj.get('results', len(rows)))
+            all_rows.extend(rows)
+            print(f'  [Recepciones] → {len(rows)} filas (acumulado: {len(all_rows)} / {data_total[0]})')
+
+        page.on('response', on_response)
+
+        for btn_label in ('Actualizar', 'Buscar', 'Filtrar', 'Ver'):
+            if await click_by_text(page, btn_label):
+                break
+
+        for tick in range(40):
+            await page.wait_for_timeout(3000)
+            print(f'  [Recepciones] {(tick+1)*3}s → {len(all_rows)} / {data_total[0] or 0}')
+            if all_rows and (data_total[0] is None or len(all_rows) >= data_total[0]):
+                break
+
+        if all_rows and data_total[0] and len(all_rows) < data_total[0] and captured_url[0]:
+            qs = parse_qs(urlparse(captured_url[0]).query, keep_blank_values=True)
+            flat = {k: v[0] for k, v in qs.items()}
+            limit = int(flat.get('limit', 2000))
+            while len(all_rows) < data_total[0]:
+                start = len(all_rows)
+                flat.update({'start': str(start), 'page': str(start // limit + 1)})
+                extra_url = '/HandleEvent?' + urlencode(flat)
+                extra_text = await page.evaluate(
+                    f'async () => {{ const r = await fetch({json.dumps(extra_url)}, '
+                    f'{{credentials:"include",headers:{{"X-Requested-With":"XMLHttpRequest"}}}}); '
+                    f'return r.text(); }}'
+                )
+                try:
+                    extra_rows = json.loads(extra_text).get('rows', [])
+                except Exception:
+                    break
+                if not extra_rows:
+                    break
+                all_rows.extend(extra_rows)
+                print(f'  [Recepciones] → {len(extra_rows)} adicionales (total: {len(all_rows)})')
+
+        await browser.close()
+        result = _transform_recepcion_rows(all_rows)
+        print(f'✓ [Recepciones] {len(result)} registros (guia+lote) extraídos de {len(all_rows)} filas')
+        return result
 
 
 async def scrape_pallets_en_bodega():
@@ -463,7 +677,8 @@ async def main():
         OUTPUT_FILE.write_text(json.dumps(bins, indent=2, ensure_ascii=False))
         print(f'✓ Guardado en {OUTPUT_FILE}')
 
-        # ── 7. Pallets en Bodega (always, before upload decision) ─────────────
+        # ── 7. Pallets en Bodega ──────────────────────────────────────────────────
+        pallets = []
         if PALLETS_OUTPUT_FILE.name:
             try:
                 pallets = await scrape_pallets_en_bodega()
@@ -472,7 +687,22 @@ async def main():
             except Exception as _pe:
                 print(f'⚠ Error scrapeando pallets: {_pe}')
 
-        # ── 8. Upload to Goodvalley (3 retries) ───────────────────────────────
+        # ── 8. Quality Dashboard grades ───────────────────────────────────────────
+        guia_grades = parse_quality_dashboard()
+        if guia_grades:
+            GUIA_GRADES_FILE.write_text(json.dumps(guia_grades, indent=2, ensure_ascii=False))
+            print(f'✓ Guia grades guardados en {GUIA_GRADES_FILE}')
+
+        # ── 9. Recepciones ────────────────────────────────────────────────────────
+        recepciones = []
+        try:
+            recepciones = await scrape_recepciones()
+            RECEPCIONES_FILE.write_text(json.dumps(recepciones, indent=2, ensure_ascii=False))
+            print(f'✓ Recepciones guardados en {RECEPCIONES_FILE}')
+        except Exception as _re:
+            print(f'⚠ Error scrapeando recepciones: {_re}')
+
+        # ── 10. Upload to Goodvalley (3 retries) ──────────────────────────────────
         if os.environ.get('GV_NO_UPLOAD'):
             print(f'✓ GV_NO_UPLOAD activo — omitiendo upload (archivo en {OUTPUT_FILE})')
             print('\n✓ Listo.')
@@ -481,13 +711,25 @@ async def main():
         print(f'▶ Subiendo a Goodvalley ({GOODVALLEY_URL})...')
         import urllib.request
         boundary = 'GVscraper1234'
-        body = (
-            f'--{boundary}\r\n'
-            f'Content-Disposition: form-data; name="bins_file"; filename="bins_scraped.json"\r\n'
-            f'Content-Type: application/json\r\n\r\n'
-            + json.dumps(bins, ensure_ascii=False)
-            + f'\r\n--{boundary}--\r\n'
-        ).encode()
+
+        def _part(name, filename, data_str):
+            return (
+                f'--{boundary}\r\n'
+                f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'
+                f'Content-Type: application/json\r\n\r\n'
+                + data_str
+                + '\r\n'
+            )
+
+        body_str = _part('bins_file', 'bins_scraped.json', json.dumps(bins, ensure_ascii=False))
+        if pallets:
+            body_str += _part('pallets_file', 'pallets.json', json.dumps(pallets, ensure_ascii=False))
+        if guia_grades:
+            body_str += _part('guia_grades_file', 'guia_grades.json', json.dumps(guia_grades, ensure_ascii=False))
+        if recepciones:
+            body_str += _part('recepciones_file', 'recepciones.json', json.dumps(recepciones, ensure_ascii=False))
+        body_str += f'--{boundary}--\r\n'
+        body = body_str.encode()
 
         uploaded = False
         for attempt in range(1, 4):

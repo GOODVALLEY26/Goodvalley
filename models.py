@@ -166,6 +166,7 @@ class Bin(db.Model):
     contenedor    = db.Column(db.String(100), nullable=True)
     producer_name = db.Column(db.String(200), default='')
     temporada     = db.Column(db.String(10),  nullable=True)
+    lote          = db.Column(db.String(30),  nullable=True, index=True)
     status        = db.Column(db.String(20),  default='available')
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -621,6 +622,26 @@ class AppSetting(db.Model):
     __tablename__ = 'app_settings'
     key   = db.Column(db.String(80), primary_key=True)
     value = db.Column(db.Text, nullable=True)
+
+
+class RecepcionLote(db.Model):
+    __tablename__ = 'recepcion_lotes'
+    id           = db.Column(db.Integer, primary_key=True)
+    guia         = db.Column(db.String(30),  nullable=False, index=True)
+    lote         = db.Column(db.String(30),  unique=True, nullable=False, index=True)
+    fecha        = db.Column(db.String(20),  nullable=True)
+    productor    = db.Column(db.String(200), nullable=True)
+    cantidadbins = db.Column(db.Integer,    nullable=True)
+
+
+class GuiaGrade(db.Model):
+    __tablename__ = 'guia_grades'
+    id            = db.Column(db.Integer, primary_key=True)
+    guia          = db.Column(db.String(30), unique=True, nullable=False)
+    grade         = db.Column(db.String(1),  nullable=True)
+    clasificacion = db.Column(db.String(1),  nullable=True)
+    fecha         = db.Column(db.String(20), nullable=True)
+    productor     = db.Column(db.String(200), nullable=True)
 
 
 class Cliente(db.Model):

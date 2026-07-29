@@ -991,7 +991,7 @@ def create_app():
     @app.route('/sync/upload', methods=['POST'])
     def sync_upload():
         import json as _json
-        from models import Bin
+        from models import Bin, RecepcionLote, GuiaGrade
 
         def _temporada(t):
             if len(t) >= 8:
@@ -1027,7 +1027,6 @@ def create_app():
 
             added = updated = skipped = 0
             new_batch = []
-            # track (bin_identifier, ot) for new bins that carry OT info
             to_allocate = []
 
             for b in bins_data:
@@ -1041,6 +1040,7 @@ def create_app():
                     continue
 
                 weight = float(b.get('weight_kg') or 0)
+                lote_val = str(b.get('lote') or '').strip() or None
 
                 if bid in existing_map:
                     db.session.query(Bin).filter_by(id=existing_map[bid]).update({
@@ -1052,6 +1052,7 @@ def create_app():
                         'contenedor': b.get('contenedor') or '',
                         'producer_name': b.get('producer_name') or '',
                         'temporada': b.get('temporada') or _temporada(bid),
+                        'lote': lote_val,
                     }, synchronize_session=False)
                     updated += 1
                 elif bid not in all_ids:
@@ -1065,6 +1066,7 @@ def create_app():
                         contenedor=b.get('contenedor') or '',
                         producer_name=b.get('producer_name') or '',
                         temporada=b.get('temporada') or _temporada(bid),
+                        lote=lote_val,
                         status='available',
                     ))
                     all_ids.add(bid)
@@ -1083,10 +1085,21 @@ def create_app():
                 db.session.bulk_save_objects(new_batch)
             db.session.commit()
 
+            # Reconcile: available bins absent from this scrape → delete
+            seen_ids = {str(b.get('bin_identifier', '')).strip() for b in bins_data}
+            gone_ids = set(existing_map.keys()) - seen_ids
+            gone_count = 0
+            if gone_ids:
+                db.session.query(Bin).filter(
+                    Bin.bin_identifier.in_(gone_ids),
+                    Bin.status == 'available'
+                ).delete(synchronize_session=False)
+                db.session.commit()
+                gone_count = len(gone_ids)
+
             # Auto-allocate new bins whose OT matches an open order line
             alloc_count = 0
             if to_allocate:
-                # Build OT → line map from open/confirmed orders
                 ot_line_map = {}
                 for ln in (OrderLine.query
                            .join(Order, OrderLine.order_id == Order.id)
@@ -1116,9 +1129,73 @@ def create_app():
                     alloc_count += 1
                 db.session.commit()
 
-            msg = f'Sync completo: {added} nuevos, {updated} actualizados, {skipped} omitidos'
+            # ── Import guia grades from Quality Dashboard ──────────────────────
+            gf = request.files.get('guia_grades_file')
+            grades_added = grades_updated = 0
+            if gf and gf.filename:
+                try:
+                    guia_grades_data = _json.load(gf)
+                    for g in guia_grades_data:
+                        guia = str(g.get('guia') or '').strip()
+                        grade = str(g.get('grade') or '').strip()
+                        if not guia or not grade:
+                            continue
+                        existing = GuiaGrade.query.filter_by(guia=guia).first()
+                        if existing:
+                            existing.grade = grade
+                            existing.clasificacion = g.get('clasificacion') or ''
+                            existing.fecha = g.get('fecha') or ''
+                            existing.productor = g.get('productor') or ''
+                            grades_updated += 1
+                        else:
+                            db.session.add(GuiaGrade(
+                                guia=guia, grade=grade,
+                                clasificacion=g.get('clasificacion') or '',
+                                fecha=g.get('fecha') or '',
+                                productor=g.get('productor') or '',
+                            ))
+                            grades_added += 1
+                    db.session.commit()
+                except Exception as _ge:
+                    db.session.rollback()
+
+            # ── Import recepciones (guia → lote mapping) ──────────────────────
+            rf = request.files.get('recepciones_file')
+            rec_added = rec_updated = 0
+            if rf and rf.filename:
+                try:
+                    rec_data = _json.load(rf)
+                    for r in rec_data:
+                        guia = str(r.get('guia') or '').strip()
+                        lote = str(r.get('lote') or '').strip()
+                        if not guia or not lote:
+                            continue
+                        existing = RecepcionLote.query.filter_by(lote=lote).first()
+                        if existing:
+                            existing.guia = guia
+                            existing.fecha = r.get('fecha') or ''
+                            existing.productor = r.get('productor') or ''
+                            existing.cantidadbins = r.get('cantidadbins') or 0
+                            rec_updated += 1
+                        else:
+                            db.session.add(RecepcionLote(
+                                guia=guia, lote=lote,
+                                fecha=r.get('fecha') or '',
+                                productor=r.get('productor') or '',
+                                cantidadbins=r.get('cantidadbins') or 0,
+                            ))
+                            rec_added += 1
+                    db.session.commit()
+                except Exception as _re:
+                    db.session.rollback()
+
+            msg = f'Sync completo: {added} nuevos, {updated} actualizados, {skipped} omitidos, {gone_count} eliminados'
             if alloc_count:
-                msg += f', {alloc_count} auto-asignados a órdenes'
+                msg += f', {alloc_count} auto-asignados'
+            if grades_added or grades_updated:
+                msg += f' | Grades: {grades_added} nuevos, {grades_updated} actualizados'
+            if rec_added or rec_updated:
+                msg += f' | Recepciones: {rec_added} nuevas, {rec_updated} actualizadas'
             flash(msg + '.', 'ok')
         except Exception as e:
             db.session.rollback()
@@ -1130,7 +1207,7 @@ def create_app():
 
     @app.route('/bins')
     def list_bins():
-        from models import Bin, CALIBER_OPTIONS, DRYING_LABELS, Productor
+        from models import Bin, CALIBER_OPTIONS, DRYING_LABELS, Productor, RecepcionLote, GuiaGrade
         from sqlalchemy import func
 
         q_caliber   = request.args.get('caliber', '')
@@ -1154,12 +1231,22 @@ def create_app():
         if q_grower:
             query = query.filter(Bin.producer_name == q_grower)
         if q_grade:
-            # case-insensitive: match bin producer_name against productores_grado names at that grade
-            grade_names = [r[0] for r in db.session.query(Productor.nombre)
-                           .filter(Productor.grado == q_grade).all()]
-            query = query.filter(
-                db.func.upper(Bin.producer_name).in_([n.upper() for n in grade_names])
-            )
+            # Primary: filter by guia-based grade (lote → guia → grade)
+            _grade_guias = [r[0] for r in db.session.query(GuiaGrade.guia)
+                            .filter(GuiaGrade.grade == q_grade).all()]
+            _grade_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
+                            .filter(RecepcionLote.guia.in_(_grade_guias)).all()] if _grade_guias else []
+            # Fallback: producer-based grade for bins without a guia-grade lote
+            _all_graded_lotes = [r[0] for r in db.session.query(RecepcionLote.lote).all()]
+            _grade_producers = [r[0].upper() for r in db.session.query(Productor.nombre)
+                                .filter(Productor.grado == q_grade).all()]
+            query = query.filter(db.or_(
+                Bin.lote.in_(_grade_lotes),
+                db.and_(
+                    ~Bin.lote.in_(_all_graded_lotes),
+                    db.func.upper(Bin.producer_name).in_(_grade_producers)
+                )
+            ))
         if q_text:
             like = f'%{q_text}%'
             query = query.filter(
@@ -1177,7 +1264,10 @@ def create_app():
 
         bins = query.order_by(Bin.bin_identifier).limit(500).all()
 
-        # Case-insensitive grade map: keyed by UPPER name so bin lookup works regardless of casing
+        # Build lote → grade map (guia chain), fallback to producer grade
+        _rec_map   = {r[0]: r[1] for r in db.session.query(RecepcionLote.lote, RecepcionLote.guia).all()}
+        _grade_map = {r[0]: r[1] for r in db.session.query(GuiaGrade.guia, GuiaGrade.grade).all()}
+        lote_grade_map = {lote: _grade_map[guia] for lote, guia in _rec_map.items() if guia in _grade_map}
         producer_grade_map = {r[0].upper(): r[1] for r in
                               db.session.query(Productor.nombre, Productor.grado).all()}
 
@@ -1203,6 +1293,7 @@ def create_app():
             DRYING_LABELS=DRYING_LABELS,
             growers=growers,
             temporadas=temporadas,
+            lote_grade_map=lote_grade_map,
             producer_grade_map=producer_grade_map,
             q_caliber=q_caliber, q_drying=q_drying, q_status=q_status,
             q_temporada=q_temporada, q_grower=q_grower, q_grade=q_grade, q_text=q_text,
@@ -1318,7 +1409,7 @@ def create_app():
 
     @app.route('/orders/<int:order_id>')
     def order_detail(order_id):
-        from models import Order, Bin, CALIBER_OPTIONS, DRYING_LABELS, Allocation, Excedente, Cliente, Productor
+        from models import Order, Bin, CALIBER_OPTIONS, DRYING_LABELS, Allocation, Excedente, Cliente, Productor, RecepcionLote, GuiaGrade
 
         order = Order.query.get_or_404(order_id)
 
@@ -1328,6 +1419,11 @@ def create_app():
         calidad_f = request.args.get('calidad_f', customer_grade or '')
         producer_grade_map = {r[0].upper(): r[1] for r in
                               db.session.query(Productor.nombre, Productor.grado).all()}
+
+        # Guia-based grade lookup
+        _rec_map_od   = {r[0]: r[1] for r in db.session.query(RecepcionLote.lote, RecepcionLote.guia).all()}
+        _grade_map_od = {r[0]: r[1] for r in db.session.query(GuiaGrade.guia, GuiaGrade.grade).all()}
+        lote_grade_map = {lote: _grade_map_od[guia] for lote, guia in _rec_map_od.items() if guia in _grade_map_od}
 
         search_line_id = request.args.get('search_line', type=int)
         search_bins = []
@@ -1386,11 +1482,20 @@ def create_app():
                     if u_lb_f:
                         q = q.filter(Bin.u_lb == float(u_lb_f))
                 if calidad_f:
-                    _grade_names = [r[0] for r in db.session.query(Productor.nombre)
-                                    .filter(Productor.grado == calidad_f).all()]
-                    q = q.filter(
-                        db.func.upper(Bin.producer_name).in_([n.upper() for n in _grade_names])
-                    )
+                    _cq_guias = [r[0] for r in db.session.query(GuiaGrade.guia)
+                                 .filter(GuiaGrade.grade == calidad_f).all()]
+                    _cq_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
+                                 .filter(RecepcionLote.guia.in_(_cq_guias)).all()] if _cq_guias else []
+                    _cq_all_lotes = [r[0] for r in db.session.query(RecepcionLote.lote).all()]
+                    _cq_prod_upper = [r[0].upper() for r in db.session.query(Productor.nombre)
+                                      .filter(Productor.grado == calidad_f).all()]
+                    q = q.filter(db.or_(
+                        Bin.lote.in_(_cq_lotes),
+                        db.and_(
+                            ~Bin.lote.in_(_cq_all_lotes),
+                            db.func.upper(Bin.producer_name).in_(_cq_prod_upper)
+                        )
+                    ))
                 if line.drying:
                     q = q.filter(Bin.drying == line.drying)
                 if line.temporada:
@@ -1459,6 +1564,7 @@ def create_app():
             DRYING_LABELS=DRYING_LABELS,
             calidad_f=calidad_f,
             producer_grade_map=producer_grade_map,
+            lote_grade_map=lote_grade_map,
         )
 
     # ── Order PDF helper (shared by download and email) ──────────────────────
@@ -3387,6 +3493,7 @@ def _migrate(db_obj):
     """Additive schema migrations — safe to run on every startup."""
     stmts = [
         # bins — new columns
+        'ALTER TABLE bins ADD COLUMN IF NOT EXISTS lote VARCHAR(30)',
         'ALTER TABLE bins ADD COLUMN IF NOT EXISTS u_lb FLOAT',
         'ALTER TABLE bins ADD COLUMN IF NOT EXISTS producto VARCHAR(200)',
         'ALTER TABLE bins ADD COLUMN IF NOT EXISTS caliber VARCHAR(20)',
