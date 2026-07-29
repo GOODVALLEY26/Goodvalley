@@ -456,7 +456,7 @@ def create_app():
                         db.session.bulk_save_objects(new_batch)
                     db.session.commit()
 
-                    # Reconcile: available bins absent from this scrape → gone
+                    # Reconcile: available bins absent from this scrape → delete
                     seen_ids = {str(b.get('bin_identifier', '')).strip() for b in bins_data}
                     gone_ids = set(existing_map.keys()) - seen_ids
                     gone_count = 0
@@ -464,12 +464,12 @@ def create_app():
                         db.session.query(Bin).filter(
                             Bin.bin_identifier.in_(gone_ids),
                             Bin.status == 'available'
-                        ).update({'status': 'gone'}, synchronize_session=False)
+                        ).delete(synchronize_session=False)
                         db.session.commit()
                         gone_count = len(gone_ids)
 
                 with open(log_path, 'a') as lf:
-                    lf.write(f'✓ {added} nuevos, {updated} actualizados, {skipped} omitidos, {gone_count} marcados gone.\n')
+                    lf.write(f'✓ {added} nuevos, {updated} actualizados, {skipped} omitidos, {gone_count} eliminados.\n')
                     lf.flush()
 
                 # ── Import pallets ─────────────────────────────────────────
@@ -684,7 +684,7 @@ def create_app():
                             db.session.bulk_save_objects(new_batch)
                         db.session.commit()
 
-                        # Reconcile: available bins absent from this scrape → gone
+                        # Reconcile: available bins absent from this scrape → delete
                         seen_ids = {str(b.get('bin_identifier', '')).strip() for b in bins_data}
                         gone_ids = set(existing_map.keys()) - seen_ids
                         gone_count = 0
@@ -692,7 +692,7 @@ def create_app():
                             db.session.query(Bin).filter(
                                 Bin.bin_identifier.in_(gone_ids),
                                 Bin.status == 'available'
-                            ).update({'status': 'gone'}, synchronize_session=False)
+                            ).delete(synchronize_session=False)
                             db.session.commit()
                             gone_count = len(gone_ids)
 
