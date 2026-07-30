@@ -645,7 +645,8 @@ def create_app():
                                 skipped += 1; continue
                             weight = float(b.get('weight_kg') or 0)
                             if bid in existing_map:
-                                db.session.query(Bin).filter_by(id=existing_map[bid]).update({
+                                _lote_val = b.get('lote') or ''
+                                _upd = {
                                     'weight_kg': weight,
                                     'humedad': b.get('humedad'),
                                     'caliber': b.get('caliber') or '',
@@ -655,7 +656,11 @@ def create_app():
                                     'contenedor': b.get('contenedor') or '',
                                     'producer_name': b.get('producer_name') or '',
                                     'temporada': b.get('temporada') or _infer_temporada(bid),
-                                }, synchronize_session=False)
+                                }
+                                if _lote_val:
+                                    _upd['lote'] = _lote_val
+                                db.session.query(Bin).filter_by(id=existing_map[bid]).update(
+                                    _upd, synchronize_session=False)
                                 updated += 1
                             elif bid not in all_ids:
                                 new_batch.append(Bin(
@@ -669,6 +674,7 @@ def create_app():
                                     contenedor=b.get('contenedor') or '',
                                     producer_name=b.get('producer_name') or '',
                                     temporada=b.get('temporada') or _infer_temporada(bid),
+                                    lote=b.get('lote') or '',
                                     status='available',
                                 ))
                                 all_ids.add(bid)
@@ -797,23 +803,32 @@ def create_app():
                         lf.write(f'► Importando {len(rec_data)} recepciones...\n')
                         lf.flush()
                     with _app.app_context():
-                        existing_lotes_r = {r[0] for r in db.session.query(_RL.lote).all()}
-                        added_r = 0
+                        existing_lotes_r = {r[0]: r[1] for r in db.session.query(_RL.lote, _RL.id).all()}
+                        added_r = updated_r = 0
                         for rec in rec_data:
                             guia = str(rec.get('guia') or '').strip()
                             lote = str(rec.get('lote') or '').strip()
-                            if not guia or not lote or lote in existing_lotes_r:
+                            if not guia or not lote:
                                 continue
-                            db.session.add(_RL(
-                                guia=guia, lote=lote,
-                                fecha=rec.get('fecha') or '',
-                                productor=rec.get('productor') or '',
-                                cantidadbins=rec.get('cantidadbins') or 0,
-                            ))
-                            added_r += 1
+                            if lote in existing_lotes_r:
+                                db.session.query(_RL).filter_by(id=existing_lotes_r[lote]).update({
+                                    'guia': guia,
+                                    'fecha': rec.get('fecha') or '',
+                                    'productor': rec.get('productor') or '',
+                                    'cantidadbins': rec.get('cantidadbins') or 0,
+                                }, synchronize_session=False)
+                                updated_r += 1
+                            else:
+                                db.session.add(_RL(
+                                    guia=guia, lote=lote,
+                                    fecha=rec.get('fecha') or '',
+                                    productor=rec.get('productor') or '',
+                                    cantidadbins=rec.get('cantidadbins') or 0,
+                                ))
+                                added_r += 1
                         db.session.commit()
                     with open(log_path, 'a') as lf:
-                        lf.write(f'✓ Recepciones: {added_r} nuevas (existentes no modificadas).\n')
+                        lf.write(f'✓ Recepciones: {added_r} nuevas, {updated_r} actualizadas.\n')
                         lf.flush()
                 except Exception as _rp:
                     db.session.rollback()

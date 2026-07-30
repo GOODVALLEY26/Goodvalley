@@ -262,6 +262,7 @@ def _transform_bins(raw_rows):
             'contenedor':     str(_rv(row, 'CONTENEDOR', 7) or '').strip(),
             'producer_name':  str(_rv(row, 'PRODUCTOR', 12) or '').strip(),
             'temporada':      temporada,
+            'lote':           str(_rv(row, 'LOTE', 4) or '').strip(),
         })
     return bins
 
@@ -334,31 +335,60 @@ def _num_str(val):
 
 
 def _transform_recepciones(raw_rows):
+    if raw_rows:
+        first = raw_rows[0]
+        if isinstance(first, dict):
+            print(f'  [RECEP] raw row keys: {list(first.keys())}')
+            print(f'  [RECEP] sample row: {dict(list(first.items())[:15])}')
+        elif isinstance(first, list):
+            print(f'  [RECEP] raw row list len={len(first)}, values: {first[:15]}')
+        try:
+            SCREENSHOT_DIR.mkdir(exist_ok=True)
+            (SCREENSHOT_DIR / 'recep_sample.json').write_text(
+                json.dumps(raw_rows[:5], ensure_ascii=False, indent=2, default=str))
+        except Exception:
+            pass
+
     recepciones = []
     seen = set()
     for row in raw_rows:
-        guia = str(_rv(row, 'IDPSJ', 3) or '').strip()
-        lote = str(_rv(row, 'LOTE', 9) or '').strip()
+        if isinstance(row, dict):
+            guia = str(
+                row.get('IDPSJ') or row.get('GUIA_PSJE1') or row.get('GUIA') or
+                row.get('NRO_GUIA') or row.get('TICKET') or row.get(3) or row.get('3') or ''
+            ).strip()
+            lote = str(row.get('LOTE') or row.get('NRO_LOTE') or row.get(9) or row.get('9') or '').strip()
+            fecha_val = row.get('FECHAPRODUCCION') or row.get('FECHA') or ''
+            productor = str(row.get('PRODUCTOR') or row.get('PRODUCTOR_NOMBRE') or '').strip()
+            try:
+                cantidadbins = int(row.get('CANTIDADBINS') or row.get('CANTIDAD') or 0)
+            except (ValueError, TypeError):
+                cantidadbins = 0
+        else:
+            guia = str(_rv(row, 'IDPSJ', 'GUIA_PSJE1', 'GUIA', 3) or '').strip()
+            lote = str(_rv(row, 'LOTE', 9) or '').strip()
+            fecha_val = _rv(row, 'FECHAPRODUCCION', 0)
+            productor = str(_rv(row, 'PRODUCTOR', 2) or '').strip()
+            try:
+                cantidadbins = int(_rv(row, 'CANTIDADBINS', 11) or 0)
+            except (ValueError, TypeError):
+                cantidadbins = 0
+
         if not guia or not lote:
             continue
         key = (guia, lote)
         if key in seen:
             continue
         seen.add(key)
-        fecha_val = _rv(row, 'FECHAPRODUCCION', 0)
         if hasattr(fecha_val, 'strftime'):
             fecha = fecha_val.strftime('%Y-%m-%d')
         else:
             fecha = str(fecha_val or '').strip()
-        try:
-            cantidadbins = int(_rv(row, 'CANTIDADBINS', 11) or 0)
-        except (ValueError, TypeError):
-            cantidadbins = 0
         recepciones.append({
             'guia':         guia,
             'lote':         lote,
             'fecha':        fecha,
-            'productor':    str(_rv(row, 'PRODUCTOR', 2) or '').strip(),
+            'productor':    productor,
             'cantidadbins': cantidadbins,
         })
     return recepciones
