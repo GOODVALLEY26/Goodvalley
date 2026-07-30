@@ -1362,15 +1362,20 @@ function upload() {
         # ── Parse Recepciones Daños ───────────────────────────────────────────
         try:
             wb = _opx.load_workbook(danos_file, read_only=True, data_only=True)
-            ws = wb['Hoja1']
+            ws = wb['Hoja1'] if 'Hoja1' in wb.sheetnames else wb.active
             rows = list(ws.iter_rows(values_only=True))
             wb.close()
         except Exception as e:
             return jsonify({'error': f'Error leyendo Recepciones Daños: {e}'}), 400
 
-        header_idx = next((i for i, r in enumerate(rows) if r[1] == 'Fecha'), None)
+        header_idx = next(
+            (i for i, r in enumerate(rows)
+             if r and len(r) > 1 and str(r[1] or '').strip().upper() == 'FECHA'),
+            None,
+        )
         if header_idx is None:
-            return jsonify({'error': 'No se encontró encabezado (Fecha) en Recepciones Daños.xlsx'}), 400
+            sample = [list(r[:6]) for r in rows[:5]]
+            return jsonify({'error': f'No se encontró encabezado (Fecha) en Recepciones Daños.xlsx. Primeras filas: {sample}'}), 400
 
         grades = []
         seen_tickets = set()
@@ -1392,6 +1397,10 @@ function upload() {
                 'fecha':         str(r[1]).strip()  if r[1]  else '',
                 'productor':     str(r[3]).strip()  if r[3]  else '',
             })
+
+        if not grades:
+            sample = [list(r[:25]) for r in rows[max(0, header_idx):header_idx + 4]]
+            return jsonify({'error': f'Se procesaron 0 tickets. header_idx={header_idx}. Filas de muestra: {sample}'}), 400
 
         # ── Parse Informe de Recepciones if provided ──────────────────────────
         recepciones = []
