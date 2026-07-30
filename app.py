@@ -1528,18 +1528,23 @@ function upload() {
             _all_graded_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
                                  .join(GuiaGrade, GuiaGrade.guia == RecepcionLote.guia).all()]
             _comp_pw = [pw for pw, g in producer_grade_map.items() if g == q_grade]
+            _not_inspected = db.or_(
+                Bin.lote.is_(None),
+                Bin.lote == '',
+                ~Bin.lote.in_(_all_graded_lotes),
+            )
             if q_grade_src == 'insp':
                 query = query.filter(Bin.lote.in_(_grade_lotes))
             elif q_grade_src == 'comp':
                 query = query.filter(db.and_(
-                    ~Bin.lote.in_(_all_graded_lotes),
+                    _not_inspected,
                     db.func.upper(Bin.producer_name).in_(_comp_pw)
                 ))
             else:
                 query = query.filter(db.or_(
                     Bin.lote.in_(_grade_lotes),
                     db.and_(
-                        ~Bin.lote.in_(_all_graded_lotes),
+                        _not_inspected,
                         db.func.upper(Bin.producer_name).in_(_comp_pw)
                     )
                 ))
