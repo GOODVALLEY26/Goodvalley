@@ -24,7 +24,8 @@ GOODVALLEY_URL = os.environ.get('GOODVALLEY_URL',  'https://web-production-2eea9
 OUTPUT_DIR      = Path(os.environ.get('GV_OUTPUT_DIR', '/tmp'))
 BINS_OUT        = Path(os.environ.get('GV_BINS_OUT',     str(OUTPUT_DIR / 'bins_scraped.json')))
 PALLETS_OUT     = Path(os.environ.get('GV_PALLETS_OUT',  str(OUTPUT_DIR / 'pallets_scraped.json')))
-PROCESOS_OUT    = Path(os.environ.get('GV_PROCESOS_OUT', str(OUTPUT_DIR / 'procesos_scraped.json')))
+PROCESOS_OUT      = Path(os.environ.get('GV_PROCESOS_OUT',      str(OUTPUT_DIR / 'procesos_scraped.json')))
+RECEPCIONES_OUT   = Path(os.environ.get('GV_RECEPCIONES_OUT',   str(OUTPUT_DIR / 'recepciones_scraped.json')))
 SCREENSHOT_DIR  = Path('/tmp/gv_scraper')
 
 _CALIBER_RE = re.compile(r'(\d{2,3}/\d{2,3}|\d{2,3}\+)')
@@ -332,6 +333,37 @@ def _num_str(val):
     return str(val).strip()
 
 
+def _transform_recepciones(raw_rows):
+    recepciones = []
+    seen = set()
+    for row in raw_rows:
+        guia = str(_rv(row, 'IDPSJ', 3) or '').strip()
+        lote = str(_rv(row, 'LOTE', 9) or '').strip()
+        if not guia or not lote:
+            continue
+        key = (guia, lote)
+        if key in seen:
+            continue
+        seen.add(key)
+        fecha_val = _rv(row, 'FECHAPRODUCCION', 0)
+        if hasattr(fecha_val, 'strftime'):
+            fecha = fecha_val.strftime('%Y-%m-%d')
+        else:
+            fecha = str(fecha_val or '').strip()
+        try:
+            cantidadbins = int(_rv(row, 'CANTIDADBINS', 11) or 0)
+        except (ValueError, TypeError):
+            cantidadbins = 0
+        recepciones.append({
+            'guia':         guia,
+            'lote':         lote,
+            'fecha':        fecha,
+            'productor':    str(_rv(row, 'PRODUCTOR', 2) or '').strip(),
+            'cantidadbins': cantidadbins,
+        })
+    return recepciones
+
+
 def _transform_procesos(raw_rows):
     procesos = []
     for row in raw_rows:
@@ -527,6 +559,74 @@ async def scrape_procesos_section(ctx):
         await page.close()
 
 
+async def scrape_recepciones_section(ctx):
+    page = await ctx.new_page()
+    try:
+        await _login(page, 'RECEP')
+        await page.wait_for_timeout(3000)
+
+        found = await _click_text(page,
+            'Recepciones', 'Informe de recepciones',
+            'Recepción', 'Recepcion', 'Informe Recepciones')
+        if not found:
+            SCREENSHOT_DIR.mkdir(exist_ok=True)
+            await page.screenshot(path=str(SCREENSHOT_DIR / 'recep_nav_fail.png'), full_page=True)
+            raise RuntimeError('[RECEP] Menú Recepciones no encontrado')
+
+        await page.wait_for_timeout(3000)
+        await page.wait_for_load_state('networkidle', timeout=15000)
+
+        # Set Desde = 01/01/2026 via ExtJS API, then keyboard fallback
+        _desde_set = False
+        try:
+            js = await page.evaluate("""
+                (function() {
+                    if (typeof Ext === 'undefined') return {ok: false, reason: 'no Ext'};
+                    var fields = Ext.ComponentQuery.query('datefield');
+                    if (!fields || !fields.length) return {ok: false, reason: 'no fields'};
+                    var d = new Date(2026, 0, 1);
+                    fields[0].setValue(d);
+                    fields[0].fireEvent('change', fields[0], d, null);
+                    return {ok: true, raw: fields[0].getRawValue()};
+                })()
+            """)
+            if js and js.get('ok'):
+                _desde_set = True
+                print(f'[RECEP] Desde → 01/01/2026 via ExtJS (raw={js.get("raw")})')
+        except Exception as e:
+            print(f'[RECEP] ExtJS setValue falló: {e}')
+
+        if not _desde_set:
+            import re as _re2
+            _date_re = _re2.compile(r'\d{1,2}[-/]\d{1,2}[-/]\d{4}')
+            try:
+                all_inputs = await page.locator('input').all()
+                date_inputs = []
+                for inp in all_inputs:
+                    try:
+                        v = await inp.input_value()
+                        if _date_re.search(v or ''):
+                            date_inputs.append(inp)
+                    except Exception:
+                        pass
+                if date_inputs:
+                    await date_inputs[0].triple_click()
+                    await page.keyboard.type('01/01/2026')
+                    await page.keyboard.press('Tab')
+                    await page.wait_for_timeout(600)
+                    print('[RECEP] Desde → 01/01/2026 via teclado')
+            except Exception as e:
+                print(f'[RECEP] Error ajustando fecha: {e}')
+
+        rows, _ = await _capture_rows(page, 'RECEP',
+                                      btn_texts=['Actualizar', 'Buscar', 'Filtrar', 'Ver'])
+        result = _transform_recepciones(rows)
+        print(f'✓ [RECEP] {len(result)} registros (ticket→lote) extraídos de {len(rows)} filas')
+        return result
+    finally:
+        await page.close()
+
+
 # ── Upload helpers ────────────────────────────────────────────────────────────
 
 def _post_json(path, payload, timeout=120, label=''):
@@ -586,6 +686,23 @@ def _upload_pallets(pallets_data):
     return False
 
 
+def _upload_recepciones(rec_data):
+    import time
+    for attempt in range(1, 4):
+        try:
+            r = _post_json('/admin/import-recepciones', {
+                'passcode': os.environ.get('SYNC_SECRET', 'gv-historico-9k2m'),
+                'recepciones': rec_data,
+            }, timeout=120)
+            print(f'✓ Recepciones upload: {r.get("added",0)} nuevas, {r.get("updated",0)} actualizadas')
+            return True
+        except Exception as e:
+            print(f'  recepciones upload intento {attempt}/3: {e}')
+            if attempt < 3:
+                time.sleep(10)
+    return False
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 async def main():
@@ -600,11 +717,13 @@ async def main():
         )
         ctx_bins    = await browser.new_context()
         ctx_pallets = await browser.new_context()
+        ctx_recep   = await browser.new_context()
         try:
-            print('▶ Scraping Bins + Pallets en Bodega (paralelo)...')
-            bins_data, pallets_data = await asyncio.gather(
+            print('▶ Scraping Bins + Pallets + Recepciones (paralelo)...')
+            bins_data, pallets_data, rec_data = await asyncio.gather(
                 scrape_bins_section(ctx_bins),
                 scrape_pallets_section(ctx_pallets),
+                scrape_recepciones_section(ctx_recep),
                 return_exceptions=True,
             )
         finally:
@@ -616,9 +735,13 @@ async def main():
     if isinstance(pallets_data, Exception):
         print(f'✗ PALLETS: {pallets_data}', file=sys.stderr)
         pallets_data = None
+    if isinstance(rec_data, Exception):
+        print(f'✗ RECEP: {rec_data}', file=sys.stderr)
+        rec_data = None
 
     bins_ok    = bins_data is not None
     pallets_ok = pallets_data is not None
+    rec_ok     = rec_data is not None
 
     # ── Link raw bins via historico xlsx ─────────────────────────────────────
     if HISTORICO_PATH.exists() and bins_ok:
@@ -661,6 +784,10 @@ async def main():
         PALLETS_OUT.write_text(json.dumps(pallets_data, indent=2, ensure_ascii=False))
         print(f'✓ Pallets: {len(pallets_data)} pallets → {PALLETS_OUT}')
 
+    if rec_ok:
+        RECEPCIONES_OUT.write_text(json.dumps(rec_data, indent=2, ensure_ascii=False))
+        print(f'✓ Recepciones: {len(rec_data)} registros → {RECEPCIONES_OUT}')
+
     if os.environ.get('GV_NO_UPLOAD'):
         print('GV_NO_UPLOAD activo — sin upload.')
         return
@@ -670,6 +797,9 @@ async def main():
 
     if pallets_ok and pallets_data:
         _upload_pallets(pallets_data)
+
+    if rec_ok and rec_data:
+        _upload_recepciones(rec_data)
 
     print('\n✓ Full sync completado.')
 

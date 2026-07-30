@@ -196,7 +196,7 @@ def create_app():
             db.session.commit()
 
     # ── Block every route for unauthenticated users ───────────────────────────
-    _PUBLIC_ENDPOINTS = {'login', 'static', 'api_import_historico', 'api_sync_trigger'}
+    _PUBLIC_ENDPOINTS = {'login', 'static', 'api_import_historico', 'api_sync_trigger', 'api_import_recepciones'}
 
     @app.before_request
     def require_login():
@@ -569,13 +569,14 @@ def create_app():
         from flask import jsonify, current_app as _ca
         from models import Bin, Order, Allocation
 
-        job_id        = _uuid.uuid4().hex[:8]
-        log_path      = _Path(f'/tmp/gv_job_{job_id}.log')
-        status_path   = _Path(f'/tmp/gv_job_{job_id}.status')
-        bins_path     = _Path(f'/tmp/gv_bins_{job_id}.json')
-        pallets_path  = _Path(f'/tmp/gv_pallets_{job_id}.json')
-        procesos_path = _Path(f'/tmp/gv_procesos_{job_id}.json')
-        scraper       = _Path(__file__).parent / 'scrape_full.py'
+        job_id           = _uuid.uuid4().hex[:8]
+        log_path         = _Path(f'/tmp/gv_job_{job_id}.log')
+        status_path      = _Path(f'/tmp/gv_job_{job_id}.status')
+        bins_path        = _Path(f'/tmp/gv_bins_{job_id}.json')
+        pallets_path     = _Path(f'/tmp/gv_pallets_{job_id}.json')
+        procesos_path    = _Path(f'/tmp/gv_procesos_{job_id}.json')
+        recepciones_path = _Path(f'/tmp/gv_recepciones_{job_id}.json')
+        scraper          = _Path(__file__).parent / 'scrape_full.py'
 
         log_path.write_text('')
         status_path.write_text('running')
@@ -597,10 +598,11 @@ def create_app():
 
             env = {
                 **os.environ,
-                'GV_NO_UPLOAD':   '1',
-                'GV_BINS_OUT':    str(bins_path),
-                'GV_PALLETS_OUT': str(pallets_path),
-                'GV_PROCESOS_OUT': str(procesos_path),
+                'GV_NO_UPLOAD':        '1',
+                'GV_BINS_OUT':         str(bins_path),
+                'GV_PALLETS_OUT':      str(pallets_path),
+                'GV_PROCESOS_OUT':     str(procesos_path),
+                'GV_RECEPCIONES_OUT':  str(recepciones_path),
             }
             proc = subprocess.Popen(
                 [sys.executable, str(scraper)],
@@ -784,6 +786,48 @@ def create_app():
                     db.session.rollback()
                     with open(log_path, 'a') as lf:
                         lf.write(f'⚠ Error importando pallets: {_ep}\n')
+                        lf.flush()
+
+            # ── Import recepciones (ticket → lote mapping) ────────────────────
+            if recepciones_path.exists():
+                try:
+                    from models import RecepcionLote as _RL
+                    rec_data = _json.loads(recepciones_path.read_text())
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'► Importando {len(rec_data)} recepciones...\n')
+                        lf.flush()
+                    with _app.app_context():
+                        existing_r = {r[0]: r[1] for r in db.session.query(_RL.lote, _RL.id).all()}
+                        added_r = updated_r = 0
+                        for rec in rec_data:
+                            guia = str(rec.get('guia') or '').strip()
+                            lote = str(rec.get('lote') or '').strip()
+                            if not guia or not lote:
+                                continue
+                            if lote in existing_r:
+                                db.session.query(_RL).filter_by(id=existing_r[lote]).update({
+                                    'guia': guia,
+                                    'fecha': rec.get('fecha') or '',
+                                    'productor': rec.get('productor') or '',
+                                    'cantidadbins': rec.get('cantidadbins') or 0,
+                                }, synchronize_session=False)
+                                updated_r += 1
+                            else:
+                                db.session.add(_RL(
+                                    guia=guia, lote=lote,
+                                    fecha=rec.get('fecha') or '',
+                                    productor=rec.get('productor') or '',
+                                    cantidadbins=rec.get('cantidadbins') or 0,
+                                ))
+                                added_r += 1
+                        db.session.commit()
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'✓ Recepciones: {added_r} nuevas, {updated_r} actualizadas.\n')
+                        lf.flush()
+                except Exception as _rp:
+                    db.session.rollback()
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'⚠ Error importando recepciones: {_rp}\n')
                         lf.flush()
 
             status_path.write_text('done:0')
@@ -3170,6 +3214,44 @@ function upload() {
         _t2.Thread(target=lambda: _run_sync(_app), daemon=True).start()
         return {'ok': True, 'status': 'sync started'}, 202
 
+
+    @app.route('/admin/import-recepciones', methods=['POST'])
+    def api_import_recepciones():
+        from models import RecepcionLote as _RL
+        data = request.get_json(force=True, silent=True) or {}
+        _secret = os.environ.get('SYNC_SECRET', 'gv-historico-9k2m')
+        if data.get('passcode') != _secret:
+            return {'error': 'forbidden'}, 403
+        rec_list = data.get('recepciones', [])
+        try:
+            existing = {r[0]: r[1] for r in db.session.query(_RL.lote, _RL.id).all()}
+            added = updated = 0
+            for rec in rec_list:
+                guia = str(rec.get('guia') or '').strip()
+                lote = str(rec.get('lote') or '').strip()
+                if not guia or not lote:
+                    continue
+                if lote in existing:
+                    db.session.query(_RL).filter_by(id=existing[lote]).update({
+                        'guia': guia,
+                        'fecha': rec.get('fecha') or '',
+                        'productor': rec.get('productor') or '',
+                        'cantidadbins': rec.get('cantidadbins') or 0,
+                    }, synchronize_session=False)
+                    updated += 1
+                else:
+                    db.session.add(_RL(
+                        guia=guia, lote=lote,
+                        fecha=rec.get('fecha') or '',
+                        productor=rec.get('productor') or '',
+                        cantidadbins=rec.get('cantidadbins') or 0,
+                    ))
+                    added += 1
+            db.session.commit()
+            return {'added': added, 'updated': updated}
+        except Exception as e:
+            db.session.rollback()
+            return {'error': str(e)}, 500
 
     @app.route('/sync/gdrive/start', methods=['POST'])
     def sync_gdrive_start():
