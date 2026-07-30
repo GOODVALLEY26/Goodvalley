@@ -196,7 +196,7 @@ def create_app():
             db.session.commit()
 
     # ── Block every route for unauthenticated users ───────────────────────────
-    _PUBLIC_ENDPOINTS = {'login', 'static', 'api_import_historico', 'api_sync_trigger', 'api_import_recepciones'}
+    _PUBLIC_ENDPOINTS = {'login', 'static', 'api_import_historico', 'api_sync_trigger', 'api_import_recepciones', 'debug_grade_counts'}
 
     @app.before_request
     def require_login():
@@ -3286,6 +3286,63 @@ function upload() {
         _t2.Thread(target=lambda: _run_sync(_app), daemon=True).start()
         return {'ok': True, 'status': 'sync started'}, 202
 
+
+    @app.route('/debug/grade-counts')
+    def debug_grade_counts():
+        from models import Bin, RecepcionLote, GuiaGrade
+        from collections import defaultdict as _dd, Counter as _Ctr
+        _gg_rows = db.session.query(GuiaGrade.productor, GuiaGrade.grade).filter(
+            GuiaGrade.productor != None, GuiaGrade.productor != '').all()
+        _danos_votes = _dd(list)
+        for _dp, _dg in _gg_rows:
+            _danos_votes[_dp.upper()].append(_dg)
+        _danos_prod_grade = {_p: _Ctr(_gs).most_common(1)[0][0] for _p, _gs in _danos_votes.items()}
+        _pw_names = {r[0] for r in db.session.query(db.distinct(Bin.producer_name))
+                     .filter(Bin.producer_name != None, Bin.producer_name != '').all()}
+        producer_grade_map = {}
+        for _pw in _pw_names:
+            _u = _pw.upper()
+            for _dp, _dg in _danos_prod_grade.items():
+                if _dp in _u:
+                    producer_grade_map[_u] = _dg
+                    break
+        _all_graded_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
+                             .join(GuiaGrade, GuiaGrade.guia == RecepcionLote.guia).all()]
+        results = {}
+        for grade in ('A', 'B', 'C'):
+            _grade_guias = [r[0] for r in db.session.query(GuiaGrade.guia)
+                            .filter(GuiaGrade.grade == grade).all()]
+            _grade_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
+                            .filter(RecepcionLote.guia.in_(_grade_guias)).all()] if _grade_guias else []
+            _comp_pw = [pw for pw, g in producer_grade_map.items() if g == grade]
+            _not_inspected = db.or_(
+                Bin.lote.is_(None), Bin.lote == '', ~Bin.lote.in_(_all_graded_lotes))
+            insp_count = db.session.query(Bin).filter(Bin.lote.in_(_grade_lotes)).count()
+            comp_count = db.session.query(Bin).filter(db.and_(
+                _not_inspected, db.func.upper(Bin.producer_name).in_(_comp_pw))).count()
+            todos_count = db.session.query(Bin).filter(db.or_(
+                Bin.lote.in_(_grade_lotes),
+                db.and_(_not_inspected, db.func.upper(Bin.producer_name).in_(_comp_pw))
+            )).count()
+            results[grade] = {
+                'inspected': insp_count, 'company': comp_count, 'todos': todos_count,
+                'grade_lotes': len(_grade_lotes), 'comp_producers': len(_comp_pw),
+            }
+        null_lote = db.session.query(Bin).filter(Bin.lote.is_(None)).count()
+        empty_lote = db.session.query(Bin).filter(Bin.lote == '').count()
+        total_bins = db.session.query(Bin).count()
+        all_graded_count = len(_all_graded_lotes)
+        unmapped_producers = [p for p in _pw_names if p.upper() not in producer_grade_map]
+        return {
+            'grade_breakdown': results,
+            'total_bins': total_bins,
+            'null_lote_bins': null_lote,
+            'empty_lote_bins': empty_lote,
+            'all_graded_lotes_count': all_graded_count,
+            'danos_producer_count': len(_danos_prod_grade),
+            'mapped_pw_producers': len(producer_grade_map),
+            'unmapped_pw_producers': unmapped_producers[:20],
+        }
 
     @app.route('/admin/import-recepciones', methods=['POST'])
     def api_import_recepciones():
