@@ -1236,23 +1236,18 @@ p  { font-size: 11px; color: #a08cc0; line-height: 1.5; }
 </head>
 <body>
 <h2>Actualizar Calidades</h2>
-<p>Descargá ambos archivos de pWarehouse y arrastrálos aquí.</p>
+<p>Subí el archivo Recepciones Daños.xlsx para actualizar los grados de inspección.</p>
 <div class="file-row">
   <div class="file-label">Recepciones Daños.xlsx</div>
   <input type="file" id="danos" class="file-input" accept=".xlsx">
-</div>
-<div class="file-row">
-  <div class="file-label">Informe de recepciones.xlsx</div>
-  <input type="file" id="informe" class="file-input" accept=".xlsx">
 </div>
 <button class="btn-submit" id="btn" onclick="upload()">Subir y actualizar</button>
 <div id="status"></div>
 <script>
 function upload() {
-  var danos   = document.getElementById('danos').files[0];
-  var informe = document.getElementById('informe').files[0];
-  if (!danos || !informe) {
-    document.getElementById('status').textContent = '⚠ Seleccioná los dos archivos.';
+  var danos = document.getElementById('danos').files[0];
+  if (!danos) {
+    document.getElementById('status').textContent = '⚠ Seleccioná el archivo.';
     return;
   }
   var btn = document.getElementById('btn');
@@ -1262,7 +1257,6 @@ function upload() {
   status.className = '';
   var fd = new FormData();
   fd.append('danos_file', danos);
-  fd.append('informe_file', informe);
   fetch('/grades/upload', { method: 'POST', body: fd })
     .then(function(r) { return r.json(); })
     .then(function(d) {
@@ -1298,12 +1292,11 @@ function upload() {
     @app.route('/grades/upload', methods=['POST'])
     def grades_upload():
         from flask import jsonify
-        from models import GuiaGrade, RecepcionLote
+        from models import GuiaGrade
 
-        danos_file   = request.files.get('danos_file')
-        informe_file = request.files.get('informe_file')
-        if not danos_file or not informe_file:
-            return jsonify({'error': 'Faltan archivos.'}), 400
+        danos_file = request.files.get('danos_file')
+        if not danos_file:
+            return jsonify({'error': 'Falta el archivo Recepciones Daños.xlsx.'}), 400
 
         try:
             import openpyxl as _opx
@@ -1344,47 +1337,7 @@ function upload() {
                 'productor':     str(r[3]).strip()  if r[3]  else '',
             })
 
-        # ── Parse Informe de Recepciones ──────────────────────────────────────
-        try:
-            wb2 = _opx.load_workbook(informe_file, read_only=True, data_only=True)
-            ws2 = wb2.active
-            rows2 = list(ws2.iter_rows(values_only=True))
-            wb2.close()
-        except Exception as e:
-            return jsonify({'error': f'Error leyendo Informe de recepciones: {e}'}), 400
-
-        header_idx2 = next((i for i, r in enumerate(rows2) if r and str(r[3] or '').upper() == 'IDPSJ'), None)
-        if header_idx2 is None:
-            header_idx2 = 0
-
-        recepciones = []
-        seen_lotes = set()
-        for r in rows2[header_idx2 + 1:]:
-            if not r or r[3] is None:
-                continue
-            ticket = r[3]
-            lote   = r[9]
-            if not ticket or not lote:
-                continue
-            ticket_str = str(int(ticket)) if isinstance(ticket, float) else str(ticket).strip()
-            lote_str   = str(lote).strip()
-            if lote_str in seen_lotes:
-                continue
-            seen_lotes.add(lote_str)
-            fecha_val = r[0]
-            if hasattr(fecha_val, 'strftime'):
-                fecha_str = fecha_val.strftime('%Y-%m-%d')
-            else:
-                fecha_str = str(fecha_val).strip() if fecha_val else ''
-            recepciones.append({
-                'guia':         ticket_str,
-                'lote':         lote_str,
-                'fecha':        fecha_str,
-                'productor':    str(r[2]).strip() if r[2] else '',
-                'cantidadbins': int(r[11]) if r[11] else 0,
-            })
-
-        # ── Update database ───────────────────────────────────────────────────
+        # ── Update database (GuiaGrade only) ─────────────────────────────────
         try:
             GuiaGrade.query.delete()
             db.session.flush()
@@ -1395,28 +1348,8 @@ function upload() {
                     fecha=g['fecha'],
                     productor=g['productor'],
                 ))
-
-            existing_lotes = {r[0]: r[1] for r in db.session.query(RecepcionLote.lote, RecepcionLote.id).all()}
-            rec_added = rec_updated = 0
-            for rec in recepciones:
-                if rec['lote'] in existing_lotes:
-                    db.session.query(RecepcionLote).filter_by(id=existing_lotes[rec['lote']]).update({
-                        'guia': rec['guia'], 'fecha': rec['fecha'],
-                        'productor': rec['productor'], 'cantidadbins': rec['cantidadbins'],
-                    }, synchronize_session=False)
-                    rec_updated += 1
-                else:
-                    db.session.add(RecepcionLote(
-                        guia=rec['guia'], lote=rec['lote'],
-                        fecha=rec['fecha'], productor=rec['productor'],
-                        cantidadbins=rec['cantidadbins'],
-                    ))
-                    rec_added += 1
-
             db.session.commit()
-            return jsonify({
-                'message': f'{len(grades)} tickets con grado · {rec_added + rec_updated} lotes actualizados'
-            })
+            return jsonify({'message': f'{len(grades)} tickets con grado cargados'})
         except Exception as e:
             db.session.rollback()
             return jsonify({'error': f'Error guardando en base de datos: {e}'}), 500
