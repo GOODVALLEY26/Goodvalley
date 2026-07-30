@@ -276,7 +276,7 @@ def _transform_recepcion_rows(raw_rows):
     seen = set()
     for row in raw_rows:
         if isinstance(row, dict):
-            guia = str(row.get('GUIA_PSJE1') or row.get('GUIA') or row.get(4) or row.get('4') or '').strip()
+            guia = str(row.get('IDPSJ') or row.get('GUIA_PSJE1') or row.get('GUIA') or row.get(3) or row.get('3') or '').strip()
             lote = str(row.get('LOTE') or row.get(9) or row.get('9') or '').strip()
             fecha = str(row.get('FECHAPRODUCCION') or row.get(0) or row.get('0') or '').strip()
             productor = str(row.get('PRODUCTOR') or row.get(2) or row.get('2') or '').strip()
@@ -285,7 +285,7 @@ def _transform_recepcion_rows(raw_rows):
             except (ValueError, TypeError):
                 cantidadbins = 0
         else:
-            guia = str(_rv(row, 4) or '').strip()
+            guia = str(_rv(row, 3) or '').strip()
             lote = str(_rv(row, 9) or '').strip()
             fecha = str(_rv(row, 0) or '').strip()
             productor = str(_rv(row, 2) or '').strip()
@@ -312,7 +312,7 @@ def _transform_recepcion_rows(raw_rows):
 async def scrape_recepciones():
     import datetime as _dt
     today_str = _dt.date.today().strftime('%d-%m-%Y')
-    from_str = '01-01-2025'
+    from_str = '01-01-2026'
     print(f'\n[{_dt.datetime.now():%Y-%m-%d %H:%M:%S}] Scrapeando Recepciones ({from_str} → {today_str})...')
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -741,8 +741,8 @@ async def main():
             GUIA_GRADES_FILE.write_text(json.dumps(guia_grades, indent=2, ensure_ascii=False))
             print(f'✓ Ticket grades guardados en {GUIA_GRADES_FILE}')
 
-        # ── 9. Lote mapping from Informe de Recepciones Excel ────────────────────
-        recepciones = parse_informe_recepciones()
+        # ── 9. Lote mapping from Informe de Recepciones (scraped from pWarehouse) ──
+        recepciones = await scrape_recepciones()
         if recepciones:
             RECEPCIONES_FILE.write_text(json.dumps(recepciones, indent=2, ensure_ascii=False))
             print(f'✓ Recepciones guardados en {RECEPCIONES_FILE}')
