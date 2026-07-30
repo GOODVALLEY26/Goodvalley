@@ -1488,23 +1488,28 @@ function upload() {
             q_grade, q_grade_src = q_grade_raw, 'all'
 
         # Build Daños producer → most common grade (from GuiaGrade.productor field)
+        import unicodedata as _ud
         from collections import defaultdict as _dd, Counter as _Ctr
+        def _norm(s):
+            return ''.join(c for c in _ud.normalize('NFD', s.upper())
+                           if _ud.category(c) != 'Mn')
         _gg_rows = db.session.query(GuiaGrade.productor, GuiaGrade.grade).filter(
             GuiaGrade.productor != None, GuiaGrade.productor != '').all()
         _danos_votes = _dd(list)
         for _dp, _dg in _gg_rows:
-            _danos_votes[_dp.upper()].append(_dg)
+            _danos_votes[_norm(_dp)].append(_dg)
         _danos_prod_grade = {_p: _Ctr(_gs).most_common(1)[0][0] for _p, _gs in _danos_votes.items()}
 
         # Build producer_grade_map: pWarehouse producer name (upper) → grade
-        # Uses substring matching: "CASABLANCA" in "SANTA AMELIA CASABLANCA" → grade A
+        # Bidirectional substring match with accent normalization so "VIÑA" matches "VINA" etc.
         _pw_names = {r[0] for r in db.session.query(db.distinct(Bin.producer_name))
                      .filter(Bin.producer_name != None, Bin.producer_name != '').all()}
         producer_grade_map = {}
         for _pw in _pw_names:
-            _u = _pw.upper()
-            for _dp, _dg in _danos_prod_grade.items():
-                if _dp in _u:
+            _u  = _pw.upper()
+            _un = _norm(_pw)
+            for _dp_norm, _dg in _danos_prod_grade.items():
+                if _dp_norm in _un or _un in _dp_norm:
                     producer_grade_map[_u] = _dg
                     break
 
@@ -3289,21 +3294,26 @@ function upload() {
 
     @app.route('/debug/grade-counts')
     def debug_grade_counts():
+        import unicodedata as _ud
         from models import Bin, RecepcionLote, GuiaGrade
         from collections import defaultdict as _dd, Counter as _Ctr
+        def _norm(s):
+            return ''.join(c for c in _ud.normalize('NFD', s.upper())
+                           if _ud.category(c) != 'Mn')
         _gg_rows = db.session.query(GuiaGrade.productor, GuiaGrade.grade).filter(
             GuiaGrade.productor != None, GuiaGrade.productor != '').all()
         _danos_votes = _dd(list)
         for _dp, _dg in _gg_rows:
-            _danos_votes[_dp.upper()].append(_dg)
+            _danos_votes[_norm(_dp)].append(_dg)
         _danos_prod_grade = {_p: _Ctr(_gs).most_common(1)[0][0] for _p, _gs in _danos_votes.items()}
         _pw_names = {r[0] for r in db.session.query(db.distinct(Bin.producer_name))
                      .filter(Bin.producer_name != None, Bin.producer_name != '').all()}
         producer_grade_map = {}
         for _pw in _pw_names:
-            _u = _pw.upper()
-            for _dp, _dg in _danos_prod_grade.items():
-                if _dp in _u:
+            _u  = _pw.upper()
+            _un = _norm(_pw)
+            for _dp_norm, _dg in _danos_prod_grade.items():
+                if _dp_norm in _un or _un in _dp_norm:
                     producer_grade_map[_u] = _dg
                     break
         _all_graded_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
