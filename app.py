@@ -797,32 +797,23 @@ def create_app():
                         lf.write(f'► Importando {len(rec_data)} recepciones...\n')
                         lf.flush()
                     with _app.app_context():
-                        existing_r = {r[0]: r[1] for r in db.session.query(_RL.lote, _RL.id).all()}
-                        added_r = updated_r = 0
+                        existing_lotes_r = {r[0] for r in db.session.query(_RL.lote).all()}
+                        added_r = 0
                         for rec in rec_data:
                             guia = str(rec.get('guia') or '').strip()
                             lote = str(rec.get('lote') or '').strip()
-                            if not guia or not lote:
+                            if not guia or not lote or lote in existing_lotes_r:
                                 continue
-                            if lote in existing_r:
-                                db.session.query(_RL).filter_by(id=existing_r[lote]).update({
-                                    'guia': guia,
-                                    'fecha': rec.get('fecha') or '',
-                                    'productor': rec.get('productor') or '',
-                                    'cantidadbins': rec.get('cantidadbins') or 0,
-                                }, synchronize_session=False)
-                                updated_r += 1
-                            else:
-                                db.session.add(_RL(
-                                    guia=guia, lote=lote,
-                                    fecha=rec.get('fecha') or '',
-                                    productor=rec.get('productor') or '',
-                                    cantidadbins=rec.get('cantidadbins') or 0,
-                                ))
-                                added_r += 1
+                            db.session.add(_RL(
+                                guia=guia, lote=lote,
+                                fecha=rec.get('fecha') or '',
+                                productor=rec.get('productor') or '',
+                                cantidadbins=rec.get('cantidadbins') or 0,
+                            ))
+                            added_r += 1
                         db.session.commit()
                     with open(log_path, 'a') as lf:
-                        lf.write(f'✓ Recepciones: {added_r} nuevas, {updated_r} actualizadas.\n')
+                        lf.write(f'✓ Recepciones: {added_r} nuevas (existentes no modificadas).\n')
                         lf.flush()
                 except Exception as _rp:
                     db.session.rollback()
@@ -1280,10 +1271,14 @@ p  { font-size: 11px; color: #a08cc0; line-height: 1.5; }
 </head>
 <body>
 <h2>Actualizar Calidades</h2>
-<p>Subí el archivo Recepciones Daños.xlsx para actualizar los grados de inspección.</p>
+<p>Recepciones Daños es obligatorio. Informe de Recepciones es opcional (solo si cambian los lotes).</p>
 <div class="file-row">
-  <div class="file-label">Recepciones Daños.xlsx</div>
+  <div class="file-label">Recepciones Daños.xlsx *</div>
   <input type="file" id="danos" class="file-input" accept=".xlsx">
+</div>
+<div class="file-row">
+  <div class="file-label">Informe de recepciones.xlsx (opcional)</div>
+  <input type="file" id="informe" class="file-input" accept=".xlsx">
 </div>
 <button class="btn-submit" id="btn" onclick="upload()">Subir y actualizar</button>
 <div id="status"></div>
@@ -1291,7 +1286,7 @@ p  { font-size: 11px; color: #a08cc0; line-height: 1.5; }
 function upload() {
   var danos = document.getElementById('danos').files[0];
   if (!danos) {
-    document.getElementById('status').textContent = '⚠ Seleccioná el archivo.';
+    document.getElementById('status').textContent = '⚠ Seleccioná el archivo de Recepciones Daños.';
     return;
   }
   var btn = document.getElementById('btn');
@@ -1299,8 +1294,10 @@ function upload() {
   btn.disabled = true;
   status.textContent = 'Procesando…';
   status.className = '';
+  var informe = document.getElementById('informe').files[0];
   var fd = new FormData();
   fd.append('danos_file', danos);
+  if (informe) fd.append('informe_file', informe);
   fetch('/grades/upload', { method: 'POST', body: fd })
     .then(function(r) { return r.json(); })
     .then(function(d) {
@@ -1336,7 +1333,7 @@ function upload() {
     @app.route('/grades/upload', methods=['POST'])
     def grades_upload():
         from flask import jsonify
-        from models import GuiaGrade
+        from models import GuiaGrade, RecepcionLote
 
         danos_file = request.files.get('danos_file')
         if not danos_file:
@@ -1381,7 +1378,42 @@ function upload() {
                 'productor':     str(r[3]).strip()  if r[3]  else '',
             })
 
-        # ── Update database (GuiaGrade only) ─────────────────────────────────
+        # ── Parse Informe de Recepciones if provided ──────────────────────────
+        recepciones = []
+        informe_file = request.files.get('informe_file')
+        if informe_file and informe_file.filename:
+            try:
+                wb2 = _opx.load_workbook(informe_file, read_only=True, data_only=True)
+                ws2 = wb2.active
+                rows2 = list(ws2.iter_rows(values_only=True))
+                wb2.close()
+                h2 = next((i for i, r in enumerate(rows2) if r and str(r[3] or '').upper() == 'IDPSJ'), None)
+                if h2 is None:
+                    h2 = 0
+                seen_lotes = set()
+                for r in rows2[h2 + 1:]:
+                    if not r or r[3] is None:
+                        continue
+                    ticket = r[3]
+                    lote   = r[9]
+                    if not ticket or not lote:
+                        continue
+                    ticket_str = str(int(ticket)) if isinstance(ticket, float) else str(ticket).strip()
+                    lote_str   = str(lote).strip()
+                    if lote_str in seen_lotes:
+                        continue
+                    seen_lotes.add(lote_str)
+                    fv = r[0]
+                    fecha_str = fv.strftime('%Y-%m-%d') if hasattr(fv, 'strftime') else str(fv or '').strip()
+                    recepciones.append({
+                        'guia': ticket_str, 'lote': lote_str, 'fecha': fecha_str,
+                        'productor': str(r[2] or '').strip(),
+                        'cantidadbins': int(r[11]) if r[11] else 0,
+                    })
+            except Exception as _ie:
+                return jsonify({'error': f'Error leyendo Informe de recepciones: {_ie}'}), 400
+
+        # ── Update database ───────────────────────────────────────────────────
         try:
             GuiaGrade.query.delete()
             db.session.flush()
@@ -1392,8 +1424,27 @@ function upload() {
                     fecha=g['fecha'],
                     productor=g['productor'],
                 ))
+            rec_msg = ''
+            if recepciones:
+                existing_lotes = {r[0]: r[1] for r in db.session.query(RecepcionLote.lote, RecepcionLote.id).all()}
+                ra = ru = 0
+                for rec in recepciones:
+                    if rec['lote'] in existing_lotes:
+                        db.session.query(RecepcionLote).filter_by(id=existing_lotes[rec['lote']]).update({
+                            'guia': rec['guia'], 'fecha': rec['fecha'],
+                            'productor': rec['productor'], 'cantidadbins': rec['cantidadbins'],
+                        }, synchronize_session=False)
+                        ru += 1
+                    else:
+                        db.session.add(RecepcionLote(
+                            guia=rec['guia'], lote=rec['lote'],
+                            fecha=rec['fecha'], productor=rec['productor'],
+                            cantidadbins=rec['cantidadbins'],
+                        ))
+                        ra += 1
+                rec_msg = f' · {ra + ru} lotes actualizados'
             db.session.commit()
-            return jsonify({'message': f'{len(grades)} tickets con grado cargados'})
+            return jsonify({'message': f'{len(grades)} tickets con grado cargados{rec_msg}'})
         except Exception as e:
             db.session.rollback()
             return jsonify({'error': f'Error guardando en base de datos: {e}'}), 500
@@ -1459,7 +1510,8 @@ function upload() {
                             .filter(GuiaGrade.grade == q_grade).all()]
             _grade_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
                             .filter(RecepcionLote.guia.in_(_grade_guias)).all()] if _grade_guias else []
-            _all_graded_lotes = [r[0] for r in db.session.query(RecepcionLote.lote).all()]
+            _all_graded_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
+                                 .join(GuiaGrade, GuiaGrade.guia == RecepcionLote.guia).all()]
             _comp_pw = [pw for pw, g in producer_grade_map.items() if g == q_grade]
             if q_grade_src == 'insp':
                 query = query.filter(Bin.lote.in_(_grade_lotes))
