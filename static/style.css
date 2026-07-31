@@ -263,6 +263,14 @@ tr.saldo-divider td { padding: 0; height: 4px; background: var(--line); border: 
   box-shadow: 0 0 0 3px var(--lavender-l);
 }
 .card-form h3   { width: 100% }
+/* Quality percentage inputs */
+.qpct-row       { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap }
+.qpct-lbl       { font-size: 12px; font-weight: 700; color: var(--purple); min-width: 12px }
+.qpct-sep       { font-size: 12px; color: var(--muted); margin-right: 6px }
+.qpct-inp       { width: 52px !important; min-width: 0 !important; padding: 7px 6px !important; text-align: center }
+.qpct-total     { font-size: 11px; color: var(--muted); font-weight: 400; text-transform: none; margin-left: 4px }
+.qpct-total.ok  { color: #2d6a4f }
+.qpct-total.err { color: #e74c3c }
 .actions        { display: flex; gap: 10px; align-items: center; width: 100%; margin-top: 6px }
 .inline         { display: inline }
 .result-line    { margin: 4px 0 10px }

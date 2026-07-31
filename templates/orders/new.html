@@ -67,14 +67,16 @@
           {% endfor %}
         </select>
       </div>
-      <div class="fld">
-        <label>Calidad</label>
-        <select name="fruit_quality">
-          <option value="">Sin especificar</option>
-          <option value="deluxe">A</option>
-          <option value="premium">B</option>
-          <option value="estandar">C</option>
-        </select>
+      <div class="fld fld-quality">
+        <label>Calidad <span class="qpct-total" id="qpct-sum-n"></span></label>
+        <div class="qpct-row">
+          <span class="qpct-lbl">A</span><input type="number" name="pct_a" min="0" max="100" placeholder="0" class="qpct-inp" oninput="updateQSum('n')">
+          <span class="qpct-sep">%</span>
+          <span class="qpct-lbl">B</span><input type="number" name="pct_b" min="0" max="100" placeholder="0" class="qpct-inp" oninput="updateQSum('n')">
+          <span class="qpct-sep">%</span>
+          <span class="qpct-lbl">C</span><input type="number" name="pct_c" min="0" max="100" placeholder="0" class="qpct-inp" oninput="updateQSum('n')">
+          <span class="qpct-sep">%</span>
+        </div>
       </div>
       <div class="fld">
         <label>Temporada</label>
@@ -743,6 +745,17 @@ function gvClienteSearch(val) {
 
 function gvClienteBlur() {
   setTimeout(function() { _clienteSuggestions.style.display = 'none'; }, 200);
+}
+function updateQSum(sfx) {
+  var form = document.getElementById('qpct-sum-' + sfx).closest('form');
+  if (!form) return;
+  var inputs = form.querySelectorAll('.qpct-inp');
+  var total = 0;
+  inputs.forEach(function(i) { total += parseInt(i.value || 0, 10); });
+  var el = document.getElementById('qpct-sum-' + sfx);
+  if (total === 0) { el.textContent = ''; el.className = 'qpct-total'; }
+  else if (total === 100) { el.textContent = '= 100%'; el.className = 'qpct-total ok'; }
+  else { el.textContent = '= ' + total + '%'; el.className = 'qpct-total err'; }
 }
 </script>
 {% endblock %}

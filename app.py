@@ -1649,7 +1649,12 @@ function upload() {
         max_humedad   = request.form.get('max_humedad')   or None
         temporada     = request.form.get('temporada')     or None
         product_type  = request.form.get('product_type')  or None
-        fruit_quality = request.form.get('fruit_quality') or None
+        _fq_parts = []
+        for _g in ('A', 'B', 'C'):
+            _pct = int(request.form.get(f'pct_{_g.lower()}') or 0)
+            if _pct:
+                _fq_parts.append(f'{_g}:{_pct}')
+        fruit_quality = ','.join(_fq_parts) or None
 
         # Build calibre/drying breakdown from percentage rows
         calibers     = request.form.getlist('caliber[]')
@@ -2227,7 +2232,12 @@ function upload() {
         max_humedad   = request.form.get('max_humedad')   or None
         temporada     = request.form.get('temporada')     or None
         product_type  = request.form.get('product_type')  or None
-        fruit_quality = request.form.get('fruit_quality') or None
+        _fq_parts = []
+        for _g in ('A', 'B', 'C'):
+            _pct = int(request.form.get(f'pct_{_g.lower()}') or 0)
+            if _pct:
+                _fq_parts.append(f'{_g}:{_pct}')
+        fruit_quality = ','.join(_fq_parts) or None
         notes         = request.form.get('notes', '').strip() or None
 
         try:

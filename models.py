@@ -279,7 +279,15 @@ class OrderLine(db.Model):
 
     @property
     def fruit_quality_label(self):
-        return FRUIT_QUALITY_LABELS.get(self.fruit_quality, self.fruit_quality or '')
+        q = self.fruit_quality or ''
+        if ':' in q:
+            parts = []
+            for seg in q.split(','):
+                if ':' in seg:
+                    grade, pct = seg.split(':', 1)
+                    parts.append(f'{pct}% {grade}')
+            return ' · '.join(parts)
+        return FRUIT_QUALITY_LABELS.get(q, q)
 
     @property
     def spec_label(self):
