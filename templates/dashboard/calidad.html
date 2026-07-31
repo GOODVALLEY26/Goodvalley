@@ -72,6 +72,9 @@
 .dq-badge.cC    { background: transparent; border: 2px dashed #b07808; color: #b07808 }
 .dq-gr-count    { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
                   min-width: 48px }
+.dq-gr-count a  { color: inherit; text-decoration: none; border-bottom: 2px solid transparent;
+                  transition: border-color .12s }
+.dq-gr-count a:hover { border-bottom-color: currentColor; cursor: pointer }
 .dq-gr-track    { flex: 1; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden }
 .dq-gr-fill     { height: 100%; border-radius: 3px }
 .dq-gr-kg       { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
@@ -228,19 +231,19 @@
           {% set insp_total = total_insp_a + total_insp_b + total_insp_c %}
           <div class="dq-gr">
             <div class="dq-badge sA">A</div>
-            <div class="dq-gr-count">{{ "{:,}".format(total_insp_a).replace(",",".") }}</div>
+            <div class="dq-gr-count"><a href="{{ url_for('list_bins', grade='A_insp') }}">{{ "{:,}".format(total_insp_a).replace(",",".") }}</a></div>
             <div class="dq-gr-track"><div class="dq-gr-fill" style="width:{{ '%.0f'|format(total_insp_a/insp_total*100 if insp_total else 0) }}%;background:#1d7a3e"></div></div>
             <div class="dq-gr-kg">{{ "{:,.0f}".format(stats.A.insp_kg).replace(",",".") }} kg</div>
           </div>
           <div class="dq-gr">
             <div class="dq-badge sB">B</div>
-            <div class="dq-gr-count">{{ "{:,}".format(total_insp_b).replace(",",".") }}</div>
+            <div class="dq-gr-count"><a href="{{ url_for('list_bins', grade='B_insp') }}">{{ "{:,}".format(total_insp_b).replace(",",".") }}</a></div>
             <div class="dq-gr-track"><div class="dq-gr-fill" style="width:{{ '%.0f'|format(total_insp_b/insp_total*100 if insp_total else 0) }}%;background:#5e3494"></div></div>
             <div class="dq-gr-kg">{{ "{:,.0f}".format(stats.B.insp_kg).replace(",",".") }} kg</div>
           </div>
           <div class="dq-gr">
             <div class="dq-badge sC">C</div>
-            <div class="dq-gr-count">{{ "{:,}".format(total_insp_c).replace(",",".") }}</div>
+            <div class="dq-gr-count"><a href="{{ url_for('list_bins', grade='C_insp') }}">{{ "{:,}".format(total_insp_c).replace(",",".") }}</a></div>
             <div class="dq-gr-track"><div class="dq-gr-fill" style="width:{{ '%.0f'|format(total_insp_c/insp_total*100 if insp_total else 0) }}%;background:#b07808"></div></div>
             <div class="dq-gr-kg">{{ "{:,.0f}".format(stats.C.insp_kg).replace(",",".") }} kg</div>
           </div>
@@ -254,19 +257,19 @@
           {% set comp_total = total_comp_a + total_comp_b + total_comp_c %}
           <div class="dq-gr">
             <div class="dq-badge cA">A*</div>
-            <div class="dq-gr-count">{{ "{:,}".format(total_comp_a).replace(",",".") }}</div>
+            <div class="dq-gr-count"><a href="{{ url_for('list_bins', grade='A_comp') }}">{{ "{:,}".format(total_comp_a).replace(",",".") }}</a></div>
             <div class="dq-gr-track"><div class="dq-gr-fill" style="width:{{ '%.0f'|format(total_comp_a/comp_total*100 if comp_total else 0) }}%;background:#84c4a0"></div></div>
             <div class="dq-gr-kg">{{ "{:,.0f}".format(stats.A.comp_kg).replace(",",".") }} kg</div>
           </div>
           <div class="dq-gr">
             <div class="dq-badge cB">B*</div>
-            <div class="dq-gr-count">{{ "{:,}".format(total_comp_b).replace(",",".") }}</div>
+            <div class="dq-gr-count"><a href="{{ url_for('list_bins', grade='B_comp') }}">{{ "{:,}".format(total_comp_b).replace(",",".") }}</a></div>
             <div class="dq-gr-track"><div class="dq-gr-fill" style="width:{{ '%.0f'|format(total_comp_b/comp_total*100 if comp_total else 0) }}%;background:#b29acc"></div></div>
             <div class="dq-gr-kg">{{ "{:,.0f}".format(stats.B.comp_kg).replace(",",".") }} kg</div>
           </div>
           <div class="dq-gr">
             <div class="dq-badge cC">C*</div>
-            <div class="dq-gr-count">{{ "{:,}".format(total_comp_c).replace(",",".") }}</div>
+            <div class="dq-gr-count"><a href="{{ url_for('list_bins', grade='C_comp') }}">{{ "{:,}".format(total_comp_c).replace(",",".") }}</a></div>
             <div class="dq-gr-track"><div class="dq-gr-fill" style="width:{{ '%.0f'|format(total_comp_c/comp_total*100 if comp_total else 0) }}%;background:#d9b96a"></div></div>
             <div class="dq-gr-kg">{{ "{:,.0f}".format(stats.C.comp_kg).replace(",",".") }} kg</div>
           </div>
