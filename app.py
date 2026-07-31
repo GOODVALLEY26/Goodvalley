@@ -305,6 +305,7 @@ def create_app():
         last_sync = db.session.query(func.max(Pallet.synced_at)).scalar()
 
         # Summary by caliber + drying (available bins only)
+        import re as _re
         rows = (
             db.session.query(
                 Bin.caliber, Bin.drying,
@@ -314,9 +315,13 @@ def create_app():
             .filter_by(status='available')
             .filter(Bin.caliber.isnot(None))
             .group_by(Bin.caliber, Bin.drying)
-            .order_by(Bin.caliber, Bin.drying)
+            .order_by(Bin.drying)
             .all()
         )
+        def _cal_num(row):
+            m = _re.search(r'\d+', row.caliber or '')
+            return int(m.group()) if m else -1
+        rows = sorted(rows, key=_cal_num, reverse=True)
 
         from models import DRYING_LABELS
         return render_template('index.html',
