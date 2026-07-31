@@ -1439,6 +1439,21 @@ function upload() {
 
         # ── Update database ───────────────────────────────────────────────────
         try:
+            import unicodedata as _ud2, re as _re2
+            from collections import defaultdict as _dd2, Counter as _Ctr2
+            from models import Productor as _Prod
+            def _normP(s):
+                return ''.join(c for c in _ud2.normalize('NFD', s.upper())
+                               if _ud2.category(c) != 'Mn')
+            _GENP = {'AGRICOLA','AGRO','AGROCOM','LTDA','LIMITADA','INVERSIONES',
+                     'COMERCIAL','SERVICIOS','SOCIEDAD','SPA','EXPORTADORA',
+                     'VINA','AGR','SANTA','SAN','SOC','EMPRESA','FUNDO',
+                     'ALIMENTOS','FRUTAS','FRUTA'}
+            def _sigP(s):
+                return {w for w in _re2.findall(r'[A-Z]{5,}', _normP(s)) if w not in _GENP}
+            def _matchP(a, b):
+                return a in b or b in a or bool(_sigP(a) & _sigP(b))
+
             GuiaGrade.query.delete()
             db.session.flush()
             for g in grades:
@@ -1448,6 +1463,18 @@ function upload() {
                     fecha=g['fecha'],
                     productor=g['productor'],
                 ))
+            # Auto-update Productor.grado from uploaded Daños grades
+            _votes2 = _dd2(list)
+            for g in grades:
+                if g['productor']:
+                    _votes2[_normP(g['productor'])].append(g['grade'])
+            _dp_grade2 = {p: _Ctr2(gs).most_common(1)[0][0] for p, gs in _votes2.items()}
+            for _prod_row in _Prod.query.all():
+                _un2 = _normP(_prod_row.nombre)
+                for _dpn, _dg in _dp_grade2.items():
+                    if _matchP(_dpn, _un2):
+                        _prod_row.grado = _dg
+                        break
             rec_msg = ''
             if recepciones:
                 existing_lotes = {r[0]: r[1] for r in db.session.query(RecepcionLote.lote, RecepcionLote.id).all()}
@@ -3590,6 +3617,87 @@ function upload() {
         from flask import jsonify
         return jsonify({'clientes': [{'nombre': c.nombre, 'grado': c.grado or '', 'potencial': c.potencial or ''} for c in results]})
 
+    @app.route('/dashboard/calidad')
+    @login_required
+    def dashboard_calidad():
+        import unicodedata as _ud, re as _re
+        from collections import defaultdict as _dd, Counter as _Ctr
+        from models import (Bin, RecepcionLote, GuiaGrade,
+                            Cliente, Productor)
+
+        def _norm(s):
+            return ''.join(c for c in _ud.normalize('NFD', s.upper())
+                           if _ud.category(c) != 'Mn')
+        _GENERIC = {'AGRICOLA','AGRO','AGROCOM','LTDA','LIMITADA','INVERSIONES',
+                    'COMERCIAL','SERVICIOS','SOCIEDAD','SPA','EXPORTADORA',
+                    'VINA','AGR','SANTA','SAN','SOC','EMPRESA','FUNDO',
+                    'ALIMENTOS','FRUTAS','FRUTA'}
+        def _sig(s):
+            return {w for w in _re.findall(r'[A-Z]{5,}', _norm(s)) if w not in _GENERIC}
+        def _match(a, b):
+            return a in b or b in a or bool(_sig(a) & _sig(b))
+
+        # ── Grade data ──────────────────────────────────────────────
+        _all_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
+                      .join(GuiaGrade, GuiaGrade.guia == RecepcionLote.guia).all()]
+        _gg_rows = db.session.query(GuiaGrade.productor, GuiaGrade.grade).filter(
+            GuiaGrade.productor != None, GuiaGrade.productor != '').all()
+        _votes = _dd(list)
+        for _dp, _dg in _gg_rows:
+            _votes[_norm(_dp)].append(_dg)
+        _dp_grade = {p: _Ctr(gs).most_common(1)[0][0] for p, gs in _votes.items()}
+
+        _pw_names = [r[0] for r in db.session.query(Bin.producer_name).distinct()
+                     if r[0]]
+        _prod_map = {}
+        for _pw in _pw_names:
+            _un = _norm(_pw)
+            for _dp_n, _dg in _dp_grade.items():
+                if _match(_dp_n, _un):
+                    _prod_map[_pw.upper()] = _dg
+                    break
+
+        def _not_insp(b):
+            return db.or_(b.lote.is_(None), b.lote == '',
+                          ~b.lote.in_(_all_lotes or ['__NONE__']))
+
+        stats = {}
+        total_bins = Bin.query.count()
+        for grade in ('A', 'B', 'C'):
+            _gl = [r[0] for r in db.session.query(RecepcionLote.lote)
+                   .join(GuiaGrade, GuiaGrade.guia == RecepcionLote.guia)
+                   .filter(GuiaGrade.grade == grade).all()]
+            _comp_pw = {k for k, v in _prod_map.items() if v == grade}
+            insp  = db.session.query(db.func.count(Bin.id), db.func.sum(Bin.weight_kg))\
+                        .filter(Bin.lote.in_(_gl or ['__NONE__'])).one()
+            comp_q = db.session.query(db.func.count(Bin.id), db.func.sum(Bin.weight_kg))\
+                        .filter(db.and_(
+                            _not_insp(Bin),
+                            db.func.upper(Bin.producer_name).in_(_comp_pw or {'__NONE__'})
+                        )).one()
+            stats[grade] = {
+                'insp_bins': insp[0] or 0,   'insp_kg': float(insp[1] or 0),
+                'comp_bins': comp_q[0] or 0, 'comp_kg': float(comp_q[1] or 0),
+            }
+        ungraded = db.session.query(db.func.count(Bin.id), db.func.sum(Bin.weight_kg))\
+                       .filter(_not_insp(Bin),
+                               ~db.func.upper(Bin.producer_name).in_(
+                                   set(_prod_map.keys()) or {'__NONE__'})).one()
+        stats['ungraded'] = {'bins': ungraded[0] or 0, 'kg': float(ungraded[1] or 0)}
+
+        # Season breakdown
+        seasons = db.session.query(Bin.temporada, db.func.count(Bin.id), db.func.sum(Bin.weight_kg))\
+                      .group_by(Bin.temporada).order_by(db.func.count(Bin.id).desc()).all()
+
+        clientes   = Cliente.query.order_by(Cliente.nombre).all()
+        productores = Productor.query.order_by(Productor.nombre).all()
+        danos_count = len(_gg_rows)
+
+        return render_template('dashboard/calidad.html',
+            stats=stats, total_bins=total_bins, seasons=seasons,
+            clientes=clientes, productores=productores,
+            danos_count=danos_count)
+
     @app.route('/clientes')
     @login_required
     def list_clientes():
@@ -3615,7 +3723,7 @@ function upload() {
                     c.potencial = val.strip() or None
         db.session.commit()
         flash('Cambios guardados.', 'ok')
-        return redirect(url_for('list_clientes'))
+        return redirect(url_for('dashboard_calidad'))
 
     @app.route('/productores')
     @login_required
@@ -3638,7 +3746,7 @@ function upload() {
                     p.grado = val.strip() or None
         db.session.commit()
         flash('Cambios guardados.', 'ok')
-        return redirect(url_for('list_productores'))
+        return redirect(url_for('dashboard_calidad'))
 
     @app.route('/rendimientos')
     def rendimientos():
