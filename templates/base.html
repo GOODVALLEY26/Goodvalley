@@ -25,10 +25,11 @@
        class="{{ 'on' if request.endpoint == 'list_descartes' else '' }}">Descartes</a>
     <a href="{{ url_for('list_pallets') }}"
        class="{{ 'on' if request.endpoint in ('list_pallets','list_saldos') else '' }}">Pallets en Bodega</a>
-    <div class="nav-dropdown" id="nav-datos-dd">
-      <button type="button" class="nav-dd-toggle {{ 'on' if request.endpoint in ('rendimientos','list_clientes','save_clientes','list_productores','save_productores') else '' }}" id="nav-datos-btn">Datos ▾</button>
-      <div class="nav-dd-menu" id="nav-datos-menu">
-        <a href="{{ url_for('rendimientos') }}" class="{{ 'active' if request.endpoint == 'rendimientos' else '' }}">Rendimientos</a>
+    <a href="{{ url_for('rendimientos') }}"
+       class="{{ 'on' if request.endpoint == 'rendimientos' else '' }}">Rendimientos</a>
+    <div class="nav-dropdown" id="nav-calidad-dd">
+      <button type="button" class="nav-dd-toggle {{ 'on' if request.endpoint in ('list_clientes','save_clientes','list_productores','save_productores') else '' }}" id="nav-calidad-btn">Dashboard de Calidad ▾</button>
+      <div class="nav-dd-menu" id="nav-calidad-menu">
         <a href="{{ url_for('list_clientes') }}" class="{{ 'active' if request.endpoint in ('list_clientes','save_clientes') else '' }}">Clientes</a>
         <a href="{{ url_for('list_productores') }}" class="{{ 'active' if request.endpoint in ('list_productores','save_productores') else '' }}">Productores</a>
       </div>
@@ -97,15 +98,15 @@
 </style>
 <script>
 (function () {
-  var datosDD  = document.getElementById('nav-datos-dd');
-  var datosBtn = document.getElementById('nav-datos-btn');
-  if (datosBtn) {
-    datosBtn.addEventListener('click', function(e) {
+  var calidadDD  = document.getElementById('nav-calidad-dd');
+  var calidadBtn = document.getElementById('nav-calidad-btn');
+  if (calidadBtn) {
+    calidadBtn.addEventListener('click', function(e) {
       e.stopPropagation();
-      datosDD.classList.toggle('open');
+      calidadDD.classList.toggle('open');
     });
     document.addEventListener('click', function(e) {
-      if (!datosDD.contains(e.target)) datosDD.classList.remove('open');
+      if (!calidadDD.contains(e.target)) calidadDD.classList.remove('open');
     });
   }
 })();
