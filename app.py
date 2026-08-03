@@ -1782,7 +1782,35 @@ function upload() {
         # Look up customer grade to pre-set calidad filter
         _cli = Cliente.query.filter_by(nombre=order.customer).first()
         customer_grade = _cli.grado if _cli else None
-        calidad_f = request.args.get('calidad_f', customer_grade or '')
+
+        # Derive default grade from the searched line's fruit_quality (e.g. "A:100") —
+        # falls back to customer grade so the filter isn't blank when no line is selected.
+        _sli_pre = request.args.get('search_line', type=int)
+        _default_calidad = customer_grade or ''
+        if _sli_pre and 'calidad_f' not in request.args:
+            _sl_pre = next((l for l in order.lines if l.id == _sli_pre), None)
+            if _sl_pre and _sl_pre.fruit_quality:
+                _fq_pre = _sl_pre.fruit_quality
+                if ':' in _fq_pre:
+                    _pcts_pre = []
+                    for _seg in _fq_pre.split(','):
+                        if ':' in _seg:
+                            _g_pre, _p_pre = _seg.split(':', 1)
+                            try:
+                                _pcts_pre.append((int(_p_pre), _g_pre.strip()))
+                            except ValueError:
+                                pass
+                    if _pcts_pre:
+                        _default_calidad = max(_pcts_pre)[1]
+                elif _fq_pre == 'deluxe':
+                    _default_calidad = 'A'
+                elif _fq_pre == 'premium':
+                    _default_calidad = 'B'
+                elif _fq_pre == 'estandar':
+                    _default_calidad = 'C'
+                elif _fq_pre in ('A', 'B', 'C'):
+                    _default_calidad = _fq_pre
+        calidad_f = request.args.get('calidad_f', _default_calidad)
         producer_grade_map = {r[0].upper(): r[1] for r in
                               db.session.query(Productor.nombre, Productor.grado).all()}
 
@@ -3377,9 +3405,12 @@ function upload() {
     @app.route('/api/sync-trigger', methods=['POST'])
     def api_sync_trigger():
         """Passcode-protected endpoint for cron-job.org to trigger a full pWarehouse sync."""
-        passcode = (request.form.get('passcode') or
-                    request.headers.get('X-Passcode') or
-                    request.json.get('passcode') if request.is_json else None or '').strip()
+        passcode = (
+            request.form.get('passcode') or
+            request.headers.get('X-Passcode') or
+            (request.json.get('passcode') if request.is_json else None) or
+            ''
+        ).strip()
         if passcode != '001083748':
             return {'error': 'unauthorized'}, 401
 
