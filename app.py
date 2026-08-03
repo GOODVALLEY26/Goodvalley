@@ -1841,18 +1841,50 @@ function upload() {
                     if u_lb_f:
                         q = q.filter(Bin.u_lb == float(u_lb_f))
                 if calidad_f:
-                    _cq_guias = [r[0] for r in db.session.query(GuiaGrade.guia)
-                                 .filter(GuiaGrade.grade == calidad_f).all()]
+                    import unicodedata as _ud3, re as _re3
+                    from collections import defaultdict as _dd3, Counter as _Ctr3
+                    # Grade lotes (inspected)
                     _cq_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
-                                 .filter(RecepcionLote.guia.in_(_cq_guias)).all()] if _cq_guias else []
-                    _cq_all_lotes = [r[0] for r in db.session.query(RecepcionLote.lote).all()]
-                    _cq_prod_upper = [r[0].upper() for r in db.session.query(Productor.nombre)
-                                      .filter(Productor.grado == calidad_f).all()]
+                                 .join(GuiaGrade, GuiaGrade.guia == RecepcionLote.guia)
+                                 .filter(GuiaGrade.grade == calidad_f).all()]
+                    # All graded lotes (to identify ungraded bins)
+                    _cq_all_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
+                                     .join(GuiaGrade, GuiaGrade.guia == RecepcionLote.guia).all()]
+                    # Company-grade: use same GuiaGrade name-matching as list_bins
+                    def _norm3(s):
+                        return ''.join(c for c in _ud3.normalize('NFD', s.upper())
+                                       if _ud3.category(c) != 'Mn')
+                    _GEN3 = {'AGRICOLA','AGRO','AGROCOM','LTDA','LIMITADA','INVERSIONES',
+                             'COMERCIAL','SERVICIOS','SOCIEDAD','SPA','EXPORTADORA',
+                             'VINA','AGR','SANTA','SAN','SOC','EMPRESA','FUNDO',
+                             'ALIMENTOS','FRUTAS','FRUTA'}
+                    def _sig3(s):
+                        return {w for w in _re3.findall(r'[A-Z]{5,}', _norm3(s)) if w not in _GEN3}
+                    def _match3(a, b):
+                        return a in b or b in a or bool(_sig3(a) & _sig3(b))
+                    _votes3 = _dd3(list)
+                    for _dp, _dg in db.session.query(GuiaGrade.productor, GuiaGrade.grade)\
+                            .filter(GuiaGrade.productor != None, GuiaGrade.productor != '').all():
+                        _votes3[_norm3(_dp)].append(_dg)
+                    _dp_grade3 = {p: _Ctr3(gs).most_common(1)[0][0] for p, gs in _votes3.items()}
+                    _pw_names3 = [r[0] for r in db.session.query(Bin.producer_name).distinct() if r[0]]
+                    _cq_prod_upper = []
+                    for _pw in _pw_names3:
+                        _un = _norm3(_pw)
+                        for _dpn, _dg in _dp_grade3.items():
+                            if _dg == calidad_f and _match3(_dpn, _un):
+                                _cq_prod_upper.append(_pw.upper())
+                                break
+                    # NULL-safe not-inspected check
+                    _not_insp_cq = db.or_(
+                        Bin.lote.is_(None), Bin.lote == '',
+                        ~Bin.lote.in_(_cq_all_lotes or ['__NONE__'])
+                    )
                     q = q.filter(db.or_(
-                        Bin.lote.in_(_cq_lotes),
+                        Bin.lote.in_(_cq_lotes or ['__NONE__']),
                         db.and_(
-                            ~Bin.lote.in_(_cq_all_lotes),
-                            db.func.upper(Bin.producer_name).in_(_cq_prod_upper)
+                            _not_insp_cq,
+                            db.func.upper(Bin.producer_name).in_(_cq_prod_upper or ['__NONE__'])
                         )
                     ))
                 if line.drying:
