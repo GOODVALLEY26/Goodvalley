@@ -1519,6 +1519,8 @@ function upload() {
         q_grower    = request.args.get('grower', '')
         q_grade_raw = request.args.get('grade', '').strip()
         q_text      = request.args.get('q', '').strip()
+        q_serie_lo  = request.args.get('serie_lo', type=float)
+        q_serie_hi  = request.args.get('serie_hi', type=float)
 
         # Parse grade sub-filter: 'A_insp' → ('A','insp'), 'A_comp' → ('A','comp'), 'A' → ('A','all')
         if q_grade_raw.endswith('_insp'):
@@ -1602,6 +1604,10 @@ function upload() {
                         db.func.upper(Bin.producer_name).in_(_comp_pw)
                     )
                 ))
+        if q_serie_lo is not None:
+            query = query.filter(Bin.u_lb >= q_serie_lo)
+        if q_serie_hi is not None:
+            query = query.filter(Bin.u_lb <= q_serie_hi)
         if q_text:
             like = f'%{q_text}%'
             query = query.filter(
@@ -1651,6 +1657,7 @@ function upload() {
             producer_grade_map=producer_grade_map,
             q_caliber=q_caliber, q_drying=q_drying, q_status=q_status,
             q_temporada=q_temporada, q_grower=q_grower, q_grade=q_grade_raw, q_text=q_text,
+            q_serie_lo=q_serie_lo, q_serie_hi=q_serie_hi,
         )
 
     # ── Orders ────────────────────────────────────────────────────────────────

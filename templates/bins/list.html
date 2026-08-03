@@ -72,6 +72,16 @@
       {% endfor %}
     </select>
   </div>
+  <div class="fld">
+    <label>Serie (u/lb)</label>
+    <div style="display:flex;align-items:center;gap:6px">
+      <input type="number" name="serie_lo" value="{{ q_serie_lo or '' }}"
+             placeholder="desde" style="width:72px">
+      <span style="font-size:12px;color:var(--muted)">—</span>
+      <input type="number" name="serie_hi" value="{{ q_serie_hi or '' }}"
+             placeholder="hasta" style="width:72px">
+    </div>
+  </div>
   <div class="fld grow">
     <label>Buscar (tarja / producto)</label>
     <input type="text" name="q" value="{{ q_text }}" placeholder="ej. 23013…">
