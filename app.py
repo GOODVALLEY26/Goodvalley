@@ -1811,8 +1811,37 @@ function upload() {
                 elif _fq_pre in ('A', 'B', 'C'):
                     _default_calidad = _fq_pre
         calidad_f = request.args.get('calidad_f', _default_calidad)
-        producer_grade_map = {r[0].upper(): r[1] for r in
-                              db.session.query(Productor.nombre, Productor.grado).all()}
+
+        # Build producer_grade_map via GuiaGrade matching (same logic as list_bins)
+        import unicodedata as _ud_od, re as _re_od
+        from collections import defaultdict as _dd_od, Counter as _Ctr_od
+        def _norm_od(s):
+            return ''.join(c for c in _ud_od.normalize('NFD', s.upper())
+                           if _ud_od.category(c) != 'Mn')
+        _GENERIC_od = {'AGRICOLA','AGRO','AGROCOM','LTDA','LIMITADA','INVERSIONES',
+                       'COMERCIAL','SERVICIOS','SOCIEDAD','SPA','EXPORTADORA',
+                       'VINA','AGR','SANTA','SAN','SOC','EMPRESA','FUNDO',
+                       'ALIMENTOS','FRUTAS','FRUTA'}
+        def _sig_od(s):
+            return {w for w in _re_od.findall(r'[A-Z]{5,}', _norm_od(s)) if w not in _GENERIC_od}
+        def _match_od(a, b):
+            return a in b or b in a or bool(_sig_od(a) & _sig_od(b))
+        _gg_od = db.session.query(GuiaGrade.productor, GuiaGrade.grade).filter(
+            GuiaGrade.productor != None, GuiaGrade.productor != '').all()
+        _votes_od = _dd_od(list)
+        for _dp_od, _dg_od in _gg_od:
+            _votes_od[_norm_od(_dp_od)].append(_dg_od)
+        _danos_od = {p: _Ctr_od(gs).most_common(1)[0][0] for p, gs in _votes_od.items()}
+        _pw_od = {r[0] for r in db.session.query(db.distinct(Bin.producer_name))
+                  .filter(Bin.producer_name != None, Bin.producer_name != '').all()}
+        producer_grade_map = {}
+        for _pw_n in _pw_od:
+            _u_od = _pw_n.upper()
+            _un_od = _norm_od(_pw_n)
+            for _dpn_od, _dg2_od in _danos_od.items():
+                if _match_od(_dpn_od, _un_od):
+                    producer_grade_map[_u_od] = _dg2_od
+                    break
 
         # Guia-based grade lookup
         _rec_map_od   = {r[0]: r[1] for r in db.session.query(RecepcionLote.lote, RecepcionLote.guia).all()}
