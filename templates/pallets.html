@@ -36,13 +36,30 @@
   </div>
 </div>
 
-{# ── Search ── #}
-<div style="margin-bottom:12px">
+{# ── Search & Filters ── #}
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center">
   <input id="pib-search" type="text" placeholder="Buscar OT, tarja, calibre, cliente…"
          value="{{ q_init }}"
          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
-                background:var(--card);color:var(--fg);font-size:13px;width:280px"
-         oninput="pibFilter(this.value)">
+                background:var(--card);color:var(--fg);font-size:13px;width:260px"
+         oninput="pibApplyFilters()">
+  <select id="pib-tipo"
+          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+                 background:var(--card);color:var(--fg);font-size:13px;cursor:pointer"
+          onchange="pibApplyFilters()">
+    <option value="">Tipo (todos)</option>
+  </select>
+  <select id="pib-calibre"
+          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+                 background:var(--card);color:var(--fg);font-size:13px;cursor:pointer"
+          onchange="pibApplyFilters()">
+    <option value="">Calibre (todos)</option>
+  </select>
+  <button onclick="pibClearFilters()"
+          style="padding:5px 12px;border:1px solid var(--border);border-radius:6px;
+                 background:var(--card);color:var(--muted);font-size:12px;cursor:pointer">
+    Limpiar
+  </button>
 </div>
 
 {# ── Tab bar ── #}
@@ -110,7 +127,9 @@
     <td colspan="2"></td>
   </tr>
   {% for r in s.tarjas %}
-  <tr class="tarja-row" data-ot="{{ s.base_ot }}">
+  <tr class="tarja-row" data-ot="{{ s.base_ot }}"
+      data-tipo="{{ (r.tipoproceso or '') | upper }}"
+      data-calibre="{{ r.serie or '' }}">
     <td class="mono" style="font-size:11px;color:var(--muted)">{{ r.ot }}</td>
     <td class="mono" style="font-size:12px">{{ r.tarja or '—' }}</td>
     <td class="mono" style="font-size:12px">{{ r.fecha_str or '—' }}</td>
@@ -173,7 +192,8 @@
         <td colspan="3"></td>
       </tr>
       {% for q in ot_pallets %}
-      <tr class="tarja-row pw-row" data-pwot="{{ p.ot }}">
+      <tr class="tarja-row pw-row" data-pwot="{{ p.ot }}"
+          data-tipo="" data-calibre="{{ q.caliber or '' }}">
         <td class="mono" style="font-size:11px;color:var(--muted)">{{ q.ot }}</td>
         <td class="mono" style="font-size:12px">{{ q.tarja or '—' }}</td>
         <td class="mono" style="font-size:12px">—</td>
@@ -276,16 +296,24 @@ function pibTab(tab) {
     btn.style.borderBottomColor  = on ? 'var(--purple)' : 'transparent';
     panel.style.display          = on ? '' : 'none';
   });
-  pibFilter(document.getElementById('pib-search').value);
+  pibApplyFilters();
 }
 
-function pibFilter(q) {
-  q = q.toLowerCase();
+function pibApplyFilters() {
+  var q       = (document.getElementById('pib-search').value || '').toLowerCase();
+  var tipo    = (document.getElementById('pib-tipo').value   || '').toUpperCase();
+  var calibre = (document.getElementById('pib-calibre').value || '');
+
+  function rowVisible(tr) {
+    if (q && !tr.textContent.toLowerCase().includes(q)) return false;
+    if (tipo    && tr.dataset.tipo    !== tipo)    return false;
+    if (calibre && tr.dataset.calibre !== calibre) return false;
+    return true;
+  }
 
   if (_pibTab === 'saldos') {
-    // historico table
     document.querySelectorAll('#tbl-hist tbody .tarja-row').forEach(function(tr) {
-      tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+      tr.style.display = rowVisible(tr) ? '' : 'none';
     });
     document.querySelectorAll('#tbl-hist tbody .ot-header').forEach(function(hdr) {
       var ot  = hdr.dataset.ot;
@@ -295,9 +323,8 @@ function pibFilter(q) {
       });
       hdr.style.display = any ? '' : 'none';
     });
-    // pWarehouse saldos table
     document.querySelectorAll('#tbl-pw tbody .pw-row').forEach(function(tr) {
-      tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+      tr.style.display = rowVisible(tr) ? '' : 'none';
     });
     document.querySelectorAll('#tbl-pw tbody .pw-ot-header').forEach(function(hdr) {
       var ot  = hdr.dataset.pwot;
@@ -308,7 +335,6 @@ function pibFilter(q) {
       hdr.style.display = any ? '' : 'none';
     });
   } else {
-    // pendientes table
     document.querySelectorAll('#tbl-pend tbody .pend-row').forEach(function(tr) {
       tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
     });
@@ -323,8 +349,34 @@ function pibFilter(q) {
   }
 }
 
-{% if q_init %}
-document.addEventListener('DOMContentLoaded', function() { pibFilter({{ q_init | tojson }}); });
-{% endif %}
+function pibClearFilters() {
+  document.getElementById('pib-search').value = '';
+  document.getElementById('pib-tipo').value   = '';
+  document.getElementById('pib-calibre').value = '';
+  pibApplyFilters();
+}
+
+// Populate filter dropdowns from row data attributes
+document.addEventListener('DOMContentLoaded', function() {
+  var tipos    = new Set();
+  var calibres = new Set();
+  document.querySelectorAll('.tarja-row').forEach(function(tr) {
+    if (tr.dataset.tipo)    tipos.add(tr.dataset.tipo);
+    if (tr.dataset.calibre) calibres.add(tr.dataset.calibre);
+  });
+  var tipoSel = document.getElementById('pib-tipo');
+  Array.from(tipos).sort().forEach(function(v) {
+    var o = document.createElement('option'); o.value = v; o.textContent = v;
+    tipoSel.appendChild(o);
+  });
+  var calSel = document.getElementById('pib-calibre');
+  Array.from(calibres).sort(function(a,b) {
+    return (parseInt(a)||0) - (parseInt(b)||0);
+  }).forEach(function(v) {
+    var o = document.createElement('option'); o.value = v; o.textContent = v;
+    calSel.appendChild(o);
+  });
+  {% if q_init %}pibApplyFilters();{% endif %}
+});
 </script>
 {% endblock %}
