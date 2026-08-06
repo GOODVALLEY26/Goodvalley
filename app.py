@@ -1852,6 +1852,7 @@ function upload() {
         search_bins = []
         search_excedentes = []
         saldo_tarjas = set()
+        saldo_motivo_map = {}
         caliber_f = u_lb_f = u_lb_lo_f = u_lb_hi_f = None
         total_in_range = grade_count = 0
         _bin_page = _tot_pages = 1
@@ -2007,10 +2008,13 @@ function upload() {
                 for _r in _cons:
                     if _r.tarja: _cons_t.add(_r.tarja.strip())
                     if _r.movimiento == 'EMBARQUE': _shipped_ots.add(_r.ot)
+                saldo_motivo_map = {}
                 for _r in _prod:
                     _t = (_r.tarja or '').strip()
                     if _t and _r.ot in _shipped_ots and _t not in _cons_t:
                         saldo_tarjas.add(_t)
+                        if _r.observaciones and _t not in saldo_motivo_map:
+                            saldo_motivo_map[_t] = _r.observaciones.strip()
                 search_bins.sort(
                     key=lambda b: (0 if b.bin_identifier in saldo_tarjas else 1, b.u_lb or float('inf'), b.bin_identifier)
                 )
@@ -2039,6 +2043,7 @@ function upload() {
             u_lb_lo_f=u_lb_lo_f if search_line_id else None,
             u_lb_hi_f=u_lb_hi_f if search_line_id else None,
             saldo_tarjas=saldo_tarjas,
+            saldo_motivo_map=saldo_motivo_map,
             CALIBER_OPTIONS=CALIBER_OPTIONS,
             DRYING_LABELS=DRYING_LABELS,
             calidad_f=calidad_f,
