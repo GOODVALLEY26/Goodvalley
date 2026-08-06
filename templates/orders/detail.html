@@ -313,6 +313,12 @@
         {% set saldo_bins = search_bins | selectattr('bin_identifier', 'in', saldo_tarjas) | list %}
         <p class="muted" style="margin:8px 0 4px">
           <strong>Bins disponibles</strong>
+          {% if calidad_f %}
+            · <strong style="color:var(--ink)">{{ grade_count }}</strong> calidad {{ calidad_f }}
+            <span style="color:var(--muted);font-size:12px">({{ total_in_range }} en rango total)</span>
+          {% else %}
+            · <strong style="color:var(--ink)">{{ grade_count }}</strong>
+          {% endif %}
           {% if saldo_bins %}
             · <span style="color:#2d6a4f;font-weight:600">{{ saldo_bins | length }} en saldo</span>
           {% endif %}
@@ -363,6 +369,24 @@
           {% endfor %}
           </tbody>
         </table>
+
+        {% if bin_total_pages > 1 %}
+        <div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px">
+          {% if bin_page > 1 %}
+            <a class="btn btn-ghost" style="padding:4px 14px;font-size:13px"
+               href="?{{ bin_base_qs }}&page={{ bin_page - 1 }}">← Anterior</a>
+          {% endif %}
+          <span class="muted" style="font-size:13px">
+            Página {{ bin_page }} de {{ bin_total_pages }}
+            &nbsp;·&nbsp; mostrando {{ search_bins | length }} de {{ grade_count }} bins
+          </span>
+          {% if bin_page < bin_total_pages %}
+            <a class="btn btn-ghost" style="padding:4px 14px;font-size:13px"
+               href="?{{ bin_base_qs }}&page={{ bin_page + 1 }}">Siguiente →</a>
+          {% endif %}
+        </div>
+        {% endif %}
+
         {% endif %}
 
         {% if search_excedentes %}

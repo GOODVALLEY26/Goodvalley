@@ -1853,6 +1853,9 @@ function upload() {
         search_excedentes = []
         saldo_tarjas = set()
         caliber_f = u_lb_f = u_lb_lo_f = u_lb_hi_f = None
+        total_in_range = grade_count = 0
+        _bin_page = _tot_pages = 1
+        _bin_base_qs = ''
         if search_line_id and order.status in ('open', 'confirmed'):
             line = next((l for l in order.lines if l.id == search_line_id), None)
             if line:
@@ -1904,6 +1907,8 @@ function upload() {
                         q = q.filter(Bin.caliber == caliber_f)
                     if u_lb_f:
                         q = q.filter(Bin.u_lb == float(u_lb_f))
+                q_range = q  # snapshot before grade filter — used for total-in-range count
+
                 if calidad_f:
                     import unicodedata as _ud3, re as _re3
                     from collections import defaultdict as _dd3, Counter as _Ctr3
@@ -1952,16 +1957,35 @@ function upload() {
                         )
                     ))
                 if line.drying:
-                    q = q.filter(Bin.drying == line.drying)
+                    q       = q.filter(Bin.drying == line.drying)
+                    q_range = q_range.filter(Bin.drying == line.drying)
                 if line.temporada:
-                    q = q.filter(Bin.temporada == line.temporada)
+                    q       = q.filter(Bin.temporada == line.temporada)
+                    q_range = q_range.filter(Bin.temporada == line.temporada)
                 if line.max_humedad:
-                    q = q.filter(
-                        db.or_(Bin.humedad.is_(None), Bin.humedad <= line.max_humedad)
-                    )
+                    _hum_f  = db.or_(Bin.humedad.is_(None), Bin.humedad <= line.max_humedad)
+                    q       = q.filter(_hum_f)
+                    q_range = q_range.filter(_hum_f)
                 if allocated_bin_ids:
-                    q = q.filter(Bin.id.notin_(allocated_bin_ids))
-                search_bins = q.order_by(Bin.u_lb.asc().nulls_last(), Bin.bin_identifier).limit(200).all()
+                    q       = q.filter(Bin.id.notin_(allocated_bin_ids))
+                    q_range = q_range.filter(Bin.id.notin_(allocated_bin_ids))
+
+                # Counts
+                total_in_range = q_range.count()
+                grade_count    = q.count()
+
+                # Pagination — 30 per page
+                import urllib.parse as _ulp
+                _bin_page  = max(1, request.args.get('page', 1, type=int))
+                _per_page  = 30
+                _tot_pages = max(1, (grade_count + _per_page - 1) // _per_page)
+                _bin_page  = min(_bin_page, _tot_pages)
+                _qs_copy   = dict(request.args)
+                _qs_copy.pop('page', None)
+                _bin_base_qs = _ulp.urlencode(_qs_copy, doseq=True)
+
+                search_bins = q.order_by(Bin.u_lb.asc().nulls_last(), Bin.bin_identifier)\
+                    .limit(_per_page).offset((_bin_page - 1) * _per_page).all()
 
                 # Compute saldo tarjas so they can be sorted to the top
                 from models import HistoricoMovimiento, WASTE_SERIES as _WS
@@ -2020,6 +2044,11 @@ function upload() {
             calidad_f=calidad_f,
             producer_grade_map=producer_grade_map,
             lote_grade_map=lote_grade_map,
+            total_in_range=total_in_range,
+            grade_count=grade_count,
+            bin_page=_bin_page,
+            bin_total_pages=_tot_pages,
+            bin_base_qs=_bin_base_qs,
         )
 
     # ── Order PDF helper (shared by download and email) ──────────────────────
