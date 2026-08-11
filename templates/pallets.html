@@ -192,14 +192,15 @@
         <td colspan="3"></td>
       </tr>
       {% for q in ot_pallets %}
+      {% set _pw_tipo = pallet_tipo_map.get(q.tarja or '', '') %}
       <tr class="tarja-row pw-row" data-pwot="{{ p.ot }}"
-          data-tipo="" data-calibre="{{ q.caliber or '' }}">
+          data-tipo="{{ _pw_tipo | upper }}" data-calibre="{{ q.caliber or '' }}">
         <td class="mono" style="font-size:11px;color:var(--muted)">{{ q.ot }}</td>
         <td class="mono" style="font-size:12px">{{ q.tarja or '—' }}</td>
         <td class="mono" style="font-size:12px">—</td>
         <td class="mono">{{ q.caliber or '—' }}</td>
         <td style="font-size:12px">{{ q.producto or '—' }}</td>
-        <td style="font-size:12px">—</td>
+        <td style="font-size:12px">{{ _pw_tipo or '—' }}</td>
         <td style="font-size:12px">{{ q.customer or '—' }}</td>
         <td class="num"><strong>{{ "{:,.1f}".format(q.weight_kg or 0) }}</strong></td>
         <td></td>
