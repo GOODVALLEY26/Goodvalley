@@ -294,6 +294,7 @@ def create_app():
     def index():
         from models import Bin, Order, Allocation, Pallet
         from sqlalchemy import func
+        import re as _re
 
         total   = Bin.query.count()
         avail   = Bin.query.filter_by(status='available').count()
@@ -304,8 +305,7 @@ def create_app():
         # Last sync time: most recent synced_at from Pallets (Bins don't track this)
         last_sync = db.session.query(func.max(Pallet.synced_at)).scalar()
 
-        # Summary by caliber + drying (available bins only)
-        import re as _re
+        # Summary by caliber + drying (available bins only) — existing table
         rows = (
             db.session.query(
                 Bin.caliber, Bin.drying,
@@ -318,10 +318,52 @@ def create_app():
             .order_by(Bin.drying)
             .all()
         )
-        def _cal_num(row):
-            m = _re.search(r'\d+', row.caliber or '')
+        def _cal_num(c):
+            m = _re.search(r'\d+', c or '')
             return int(m.group()) if m else -1
-        rows = sorted(rows, key=_cal_num, reverse=True)
+        rows = sorted(rows, key=lambda r: _cal_num(r.caliber), reverse=True)
+
+        # ── Inventario tab: pivot queries ─────────────────────────────────────
+        _DRYING_COLS = ['horno', 'cancha', 'termino_secado']
+
+        def _build_pivot(q_rows):
+            p = {}
+            for key, drying, cnt, wkg in q_rows:
+                d = drying or 'termino_secado'
+                if key not in p:
+                    p[key] = {dc: {'cnt': 0, 'kg': 0.0} for dc in _DRYING_COLS}
+                if d in p[key]:
+                    p[key][d]['cnt'] += cnt or 0
+                    p[key][d]['kg']  += wkg  or 0.0
+            return p
+
+        _gross_statuses = ('available', 'allocated')
+
+        # Calibre pivots
+        _gc = (db.session.query(Bin.caliber, Bin.drying,
+                    func.count(Bin.id), func.sum(Bin.weight_kg))
+               .filter(Bin.status.in_(_gross_statuses), Bin.caliber.isnot(None))
+               .group_by(Bin.caliber, Bin.drying).all())
+        _nc = (db.session.query(Bin.caliber, Bin.drying,
+                    func.count(Bin.id), func.sum(Bin.weight_kg))
+               .filter(Bin.status == 'available', Bin.caliber.isnot(None))
+               .group_by(Bin.caliber, Bin.drying).all())
+        inv_gross_cal = _build_pivot(_gc)
+        inv_net_cal   = _build_pivot(_nc)
+        inv_calibers  = sorted(inv_gross_cal.keys(), key=_cal_num)
+
+        # Serie (u_lb) pivots
+        _gs = (db.session.query(Bin.u_lb, Bin.drying,
+                    func.count(Bin.id), func.sum(Bin.weight_kg))
+               .filter(Bin.status.in_(_gross_statuses), Bin.u_lb.isnot(None), Bin.u_lb > 0)
+               .group_by(Bin.u_lb, Bin.drying).all())
+        _ns = (db.session.query(Bin.u_lb, Bin.drying,
+                    func.count(Bin.id), func.sum(Bin.weight_kg))
+               .filter(Bin.status == 'available', Bin.u_lb.isnot(None), Bin.u_lb > 0)
+               .group_by(Bin.u_lb, Bin.drying).all())
+        inv_gross_serie = _build_pivot(_gs)
+        inv_net_serie   = _build_pivot(_ns)
+        inv_series      = sorted(inv_gross_serie.keys(), key=lambda v: v or 0)
 
         from models import DRYING_LABELS
         return render_template('index.html',
@@ -329,6 +371,11 @@ def create_app():
             n_open=n_open, alloc_n=alloc_n, summary_rows=rows,
             DRYING_LABELS=DRYING_LABELS,
             last_sync=last_sync,
+            inv_gross_cal=inv_gross_cal, inv_net_cal=inv_net_cal,
+            inv_calibers=inv_calibers,
+            inv_gross_serie=inv_gross_serie, inv_net_serie=inv_net_serie,
+            inv_series=inv_series,
+            inv_drying_cols=_DRYING_COLS,
         )
 
     # ── Sync ──────────────────────────────────────────────────────────────────

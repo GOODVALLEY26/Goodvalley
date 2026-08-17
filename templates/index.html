@@ -2,9 +2,16 @@
 {% block title %}Resumen · Goodvalley{% endblock %}
 
 {% block content %}
-<h1>Resumen</h1>
+<div class="row-between" style="margin-bottom:20px">
+  <h1 style="margin:0">Resumen</h1>
+  {% if last_sync %}
+  <p class="muted" style="font-size:12px;margin:0">
+    Última sync: <strong>{{ (last_sync|santiago).strftime('%d-%m-%Y %H:%M') }}</strong>
+  </p>
+  {% endif %}
+</div>
 
-<div class="cards">
+<div class="cards" style="margin-bottom:24px">
   <div class="card"><div class="big">{{ total }}</div><div class="lbl">Bins de ciruela</div></div>
   <div class="card ok"><div class="big">{{ avail }}</div><div class="lbl">Disponibles</div></div>
   <div class="card"><div class="big">{{ "{:,.1f}".format(kg) }}</div><div class="lbl">kg disponibles</div></div>
@@ -12,21 +19,33 @@
   <div class="card"><div class="big">{{ n_open }}</div><div class="lbl">Órdenes abiertas</div></div>
 </div>
 
-{% if last_sync %}
-<p class="muted" style="font-size:12px;margin-bottom:20px">
-  Última sincronización de Bins y Pallets:
-  <strong>{{ (last_sync|santiago).strftime('%d-%m-%Y %H:%M') }}</strong>
-</p>
-{% endif %}
+{# ── Tab bar ── #}
+<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:24px">
+  <button id="tab-btn-resumen" onclick="showTab('resumen')"
+          style="padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;
+                 background:none;border:none;border-bottom:3px solid var(--purple);
+                 color:var(--purple);margin-bottom:-2px">
+    Resumen
+  </button>
+  <button id="tab-btn-inventario" onclick="showTab('inventario')"
+          style="padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;
+                 background:none;border:none;border-bottom:3px solid transparent;
+                 color:var(--muted);margin-bottom:-2px">
+    Inventario
+  </button>
+</div>
 
-<div class="row-between">
-  <h2>Stock disponible por calibre y secado</h2>
+{# ════════════════════════════════════ TAB 1 – RESUMEN ════════════════════════ #}
+<div id="panel-resumen">
+
+<div class="row-between" style="margin-bottom:8px">
+  <h2 style="margin:0">Stock disponible por calibre y secado</h2>
   <div style="display:flex;gap:8px">
     <a class="btn" href="{{ url_for('list_bins') }}" style="background:var(--card);border:1px solid var(--border);color:var(--fg)">Inventario de Bins</a>
     <a class="btn btn-primary" href="{{ url_for('new_order') }}">+ Nueva orden de venta</a>
   </div>
 </div>
-<p class="muted">
+<p class="muted" style="margin-bottom:12px">
   Bins disponibles, agrupados por calibre y método de secado.
   Sirve para identificar excedente y asignarlo a órdenes.
 </p>
@@ -38,26 +57,156 @@
     <th class="num">Bins</th><th class="num">kg disponibles</th><th></th>
   </tr></thead>
   <tbody>
-  {% for caliber, drying, cnt, kg in summary_rows %}
+  {% for row in summary_rows %}
     <tr>
-      <td><strong>{{ caliber }}</strong></td>
+      <td><strong>{{ row.caliber }}</strong></td>
       <td>
-        <span class="pill pill-{{ drying }}">{{ DRYING_LABELS.get(drying, drying) }}</span>
+        <span class="pill pill-{{ row.drying }}">{{ DRYING_LABELS.get(row.drying, row.drying) }}</span>
       </td>
-      <td class="num">{{ cnt }}</td>
-      <td class="num">{{ "{:,.1f}".format(kg or 0) }}</td>
+      <td class="num">{{ row.cnt }}</td>
+      <td class="num">{{ "{:,.1f}".format(row.kg or 0) }}</td>
       <td>
-        <a class="open-btn" href="{{ url_for('list_bins', caliber=caliber, drying=drying, status='available') }}">VER BINS</a>
+        <a class="open-btn" href="{{ url_for('list_bins', caliber=row.caliber, drying=row.drying, status='available') }}">VER BINS</a>
       </td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 {% else %}
-<div class="empty">
-  <p>No hay bins disponibles.</p>
-</div>
+<div class="empty"><p>No hay bins disponibles.</p></div>
 {% endif %}
+
+</div>{# /panel-resumen #}
+
+{# ════════════════════════════════════ TAB 2 – INVENTARIO ════════════════════ #}
+{% set _dl = {'horno': 'Horno', 'cancha': 'Sol', 'termino_secado': 'Término Secado'} %}
+{% set _dc = inv_drying_cols %}
+
+<div id="panel-inventario" style="display:none">
+
+{# helper macro: render one pivot table #}
+{% macro pivot_table(pivot, keys, label, is_serie) %}
+{% set _col_totals_gross = namespace(h=0.0, s=0.0, t=0.0, tot=0.0) %}
+<h3 style="font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;
+           color:var(--muted);margin:0 0 8px">{{ label }}</h3>
+<div style="overflow-x:auto;margin-bottom:32px">
+<table class="grid tight" style="min-width:600px">
+  <thead>
+    <tr>
+      <th style="min-width:90px">{{ 'Calibre' if not is_serie else 'Serie (u/lb)' }}</th>
+      {% for d in _dc %}
+      <th class="num">{{ _dl[d] }}</th>
+      <th class="num" style="color:var(--muted);font-size:11px;font-weight:400">bins</th>
+      {% endfor %}
+      <th class="num" style="background:var(--lavender)">Total kg</th>
+      <th class="num" style="background:var(--lavender);color:var(--muted);font-size:11px;font-weight:400">bins</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for key in keys %}
+    {% set row = pivot.get(key, {}) %}
+    {% set _tot_kg  = namespace(v=0.0) %}
+    {% set _tot_cnt = namespace(v=0) %}
+    <tr>
+      <td><strong>{{ (key | int) if is_serie else key }}</strong></td>
+      {% for d in _dc %}
+        {% set cell = row.get(d, {'cnt':0,'kg':0.0}) %}
+        <td class="num">
+          {% if cell.kg > 0 %}{{ "{:,.0f}".format(cell.kg) }}{% else %}<span style="color:var(--muted)">—</span>{% endif %}
+        </td>
+        <td class="num" style="color:var(--muted);font-size:11px">
+          {% if cell.cnt > 0 %}{{ cell.cnt }}{% else %}—{% endif %}
+        </td>
+        {% set _tot_kg.v  = _tot_kg.v  + (cell.kg  or 0) %}
+        {% set _tot_cnt.v = _tot_cnt.v + (cell.cnt or 0) %}
+      {% endfor %}
+      <td class="num" style="font-weight:700;background:var(--lavender)">{{ "{:,.0f}".format(_tot_kg.v) }}</td>
+      <td class="num" style="font-weight:700;background:var(--lavender);color:var(--muted);font-size:11px">{{ _tot_cnt.v }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr style="background:var(--card);font-weight:700">
+      <td>Total</td>
+      {% for d in _dc %}
+        {% set _col_kg  = namespace(v=0.0) %}
+        {% set _col_cnt = namespace(v=0) %}
+        {% for key in keys %}
+          {% set cell = pivot.get(key, {}).get(d, {'cnt':0,'kg':0.0}) %}
+          {% set _col_kg.v  = _col_kg.v  + (cell.kg  or 0) %}
+          {% set _col_cnt.v = _col_cnt.v + (cell.cnt or 0) %}
+        {% endfor %}
+        <td class="num">{{ "{:,.0f}".format(_col_kg.v) }}</td>
+        <td class="num" style="color:var(--muted);font-size:11px">{{ _col_cnt.v }}</td>
+      {% endfor %}
+      {% set _grand_kg  = namespace(v=0.0) %}
+      {% set _grand_cnt = namespace(v=0) %}
+      {% for key in keys %}
+        {% for d in _dc %}
+          {% set cell = pivot.get(key, {}).get(d, {'cnt':0,'kg':0.0}) %}
+          {% set _grand_kg.v  = _grand_kg.v  + (cell.kg  or 0) %}
+          {% set _grand_cnt.v = _grand_cnt.v + (cell.cnt or 0) %}
+        {% endfor %}
+      {% endfor %}
+      <td class="num" style="background:var(--lavender)">{{ "{:,.0f}".format(_grand_kg.v) }}</td>
+      <td class="num" style="background:var(--lavender);color:var(--muted);font-size:11px">{{ _grand_cnt.v }}</td>
+    </tr>
+  </tfoot>
+</table>
+</div>
+{% endmacro %}
+
+{# ── Calibre tables ── #}
+<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:4px">
+  <h2 style="margin:0">Por Calibre</h2>
+  <span class="muted" style="font-size:12px">calibre × tipo de secado</span>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:40px">
+  <div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#6d28d9"></span>
+      <strong style="font-size:13px">Bruto</strong>
+      <span class="muted" style="font-size:12px">— todo lo que hay en bodega (disponible + asignado)</span>
+    </div>
+    {{ pivot_table(inv_gross_cal, inv_calibers, '', false) }}
+  </div>
+  <div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#059669"></span>
+      <strong style="font-size:13px">Neto</strong>
+      <span class="muted" style="font-size:12px">— solo disponible (descontando órdenes asignadas)</span>
+    </div>
+    {{ pivot_table(inv_net_cal, inv_calibers, '', false) }}
+  </div>
+</div>
+
+{# ── Serie tables ── #}
+<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:4px">
+  <h2 style="margin:0">Por Serie (u/lb)</h2>
+  <span class="muted" style="font-size:12px">serie exacta × tipo de secado</span>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">
+  <div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#6d28d9"></span>
+      <strong style="font-size:13px">Bruto</strong>
+      <span class="muted" style="font-size:12px">— todo lo que hay en bodega</span>
+    </div>
+    {{ pivot_table(inv_gross_serie, inv_series, '', true) }}
+  </div>
+  <div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#059669"></span>
+      <strong style="font-size:13px">Neto</strong>
+      <span class="muted" style="font-size:12px">— solo disponible</span>
+    </div>
+    {{ pivot_table(inv_net_serie, inv_series, '', true) }}
+  </div>
+</div>
+
+</div>{# /panel-inventario #}
 
 <div style="text-align:right; margin-top:80px; padding-bottom:8px;">
   <form method="post" action="{{ url_for('reset_inventory') }}" id="reset-form">
@@ -68,4 +217,26 @@
     </button>
   </form>
 </div>
+
+<script>
+function showTab(tab) {
+  ['resumen','inventario'].forEach(function(t) {
+    var btn   = document.getElementById('tab-btn-'  + t);
+    var panel = document.getElementById('panel-' + t);
+    var on    = (t === tab);
+    btn.style.color             = on ? 'var(--purple)' : 'var(--muted)';
+    btn.style.borderBottomColor = on ? 'var(--purple)' : 'transparent';
+    panel.style.display         = on ? '' : 'none';
+  });
+}
+// Restore last active tab across page reloads
+(function(){
+  var stored = sessionStorage.getItem('resumen-tab') || 'resumen';
+  document.addEventListener('DOMContentLoaded', function() { showTab(stored); });
+  ['resumen','inventario'].forEach(function(t) {
+    var btn = document.getElementById('tab-btn-' + t);
+    if (btn) btn.addEventListener('click', function() { sessionStorage.setItem('resumen-tab', t); });
+  });
+})();
+</script>
 {% endblock %}
