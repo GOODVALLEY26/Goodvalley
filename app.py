@@ -3754,9 +3754,10 @@ function upload() {
             ) if p.tarja not in historico_tarjas
         ] if ots_with_embarque else [])
 
-        # Tipo lookup for pWarehouse saldo pallets (not stored in Pallet model)
+        # Tipo + Observaciones lookup for pWarehouse saldo pallets (not stored in Pallet model)
         _pw_tarjas = [p.tarja for p in saldo_pallets if p.tarja]
         pallet_tipo_map = {}
+        pw_obs_map = {}
         if _pw_tarjas:
             for _pt, _tp in (db.session.query(HistoricoMovimiento.tarja, HistoricoMovimiento.tipoproceso)
                     .filter(HistoricoMovimiento.tarja.in_(_pw_tarjas))
@@ -3764,6 +3765,15 @@ function upload() {
                     .all()):
                 if _pt and _pt.strip() not in pallet_tipo_map:
                     pallet_tipo_map[_pt.strip()] = _tp
+            for _pt, _obs in (db.session.query(HistoricoMovimiento.tarja, HistoricoMovimiento.observaciones)
+                    .filter(HistoricoMovimiento.tarja.in_(_pw_tarjas))
+                    .filter(HistoricoMovimiento.movimiento.in_([
+                        'INGRESO DESDE PROCESO', 'REPALETIZAJE', 'INGRESO REEMBALAJE'
+                    ]))
+                    .filter(HistoricoMovimiento.observaciones.isnot(None))
+                    .all()):
+                if _pt and _pt.strip() not in pw_obs_map and _obs:
+                    pw_obs_map[_pt.strip()] = _obs.strip()
 
         # ── Tab 2: Pendientes (pWarehouse pallets for OTs with no embarque) ──
         all_pallets = (Pallet.query
@@ -3793,6 +3803,7 @@ function upload() {
             total_kg_pallets=sum(p.weight_kg or 0 for p in saldo_pallets),
             humedad_by_ot=humedad_by_ot,
             pallet_tipo_map=pallet_tipo_map,
+            pw_obs_map=pw_obs_map,
             pendientes_groups=pendientes_groups,
             last_sync=last_sync,
             q_init=q_init,

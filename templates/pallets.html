@@ -140,7 +140,7 @@
     <td class="num"><strong>{{ "{:,.1f}".format(r.neto) if r.neto else '—' }}</strong></td>
     <td></td>
     <td style="font-size:12px">{{ r.secado or '—' }}</td>
-    <td>—</td>
+    <td style="font-size:12px;color:var(--muted);max-width:160px;white-space:normal">{{ r.observaciones or '—' }}</td>
   </tr>
   {% endfor %}
   {% endfor %}
@@ -205,8 +205,11 @@
         <td class="num"><strong>{{ "{:,.1f}".format(q.weight_kg or 0) }}</strong></td>
         <td></td>
         <td>{% if q.drying %}<span class="pill pill-{{ q.drying }}">{{ q.drying_label }}</span>{% else %}—{% endif %}</td>
-        <td>
-          {% if q.pallet_estado_ot == 'F' %}
+        <td style="font-size:12px;color:var(--muted);max-width:160px;white-space:normal">
+          {% set _obs = pw_obs_map.get((q.tarja or '').strip(), '') %}
+          {% if _obs %}
+            {{ _obs }}
+          {% elif q.pallet_estado_ot == 'F' %}
             <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:11px">No cumplió</span>
           {% elif q.pallet_estado_ot == 'T' %}
             <span class="pill" style="background:#d1fae5;color:#065f46;font-size:11px">Excedente</span>
