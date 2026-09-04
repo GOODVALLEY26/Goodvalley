@@ -2509,6 +2509,132 @@ function upload() {
         flash(f'{count} elemento(s) asignado(s).', 'ok')
         return redirect(url_for('order_detail', order_id=order_id))
 
+    @app.route('/orders/<int:order_id>/lines/<int:line_id>/auto_allocate', methods=['POST'])
+    @login_required
+    def auto_allocate_bins(order_id, line_id):
+        """Server-side auto-select: queries ALL matching bins (no pagination) and allocates until kg_needed covered."""
+        from models import Order, OrderLine, Allocation, Bin, RecepcionLote, GuiaGrade
+        import unicodedata as _ud_aa, re as _re_aa
+        from collections import defaultdict as _dd_aa, Counter as _Ctr_aa
+
+        order = Order.query.get_or_404(order_id)
+        line  = OrderLine.query.get_or_404(line_id)
+
+        if order.status in ('fulfilled', 'cancelled'):
+            flash('No se pueden asignar bins a una orden cerrada.', 'err')
+            return redirect(url_for('order_detail', order_id=order_id))
+
+        needed = line.mp_kg_needed - line.allocated_kg
+        if needed <= 0:
+            flash('La línea ya está completa.', 'ok')
+            return redirect(url_for('order_detail', order_id=order_id))
+
+        allocated_bin_ids = {a.bin_id for a in Allocation.query.filter(Allocation.bin_id.isnot(None)).all()}
+        q = Bin.query.filter_by(status='available')
+        if allocated_bin_ids:
+            q = q.filter(Bin.id.notin_(allocated_bin_ids))
+
+        calidad_f = request.form.get('calidad_f', '').strip()
+        caliber_f = request.form.get('caliber_f', '').strip()
+        u_lb_lo_f = request.form.get('u_lb_lo_f', type=int)
+        u_lb_hi_f = request.form.get('u_lb_hi_f', type=int)
+        u_lb_f    = request.form.get('u_lb_f', type=int)
+
+        _is_serie_range = bool(line.caliber and '-' in line.caliber and '/' not in line.caliber)
+        if _is_serie_range:
+            if caliber_f:
+                q = q.filter(Bin.caliber == caliber_f)
+            _CAL_RANGES = {
+                '20/30':(20,30),'30/40':(30,40),'40/50':(40,50),'50/60':(50,60),
+                '60/70':(60,70),'70/80':(70,80),'80/90':(80,90),'90/100':(90,100),
+                '100/120':(100,120),'120/144':(120,144),'144/170':(144,170),
+            }
+            if u_lb_lo_f is not None or u_lb_hi_f is not None:
+                lo_f = float(u_lb_lo_f) if u_lb_lo_f is not None else 0
+                hi_f = float(u_lb_hi_f) if u_lb_hi_f is not None else 9999
+                overlap_cals = [c for c,(blo,bhi) in _CAL_RANGES.items() if max(lo_f,blo) <= min(hi_f,bhi)]
+                q = q.filter(db.or_(
+                    db.and_(Bin.u_lb >= lo_f, Bin.u_lb <= hi_f),
+                    db.and_(Bin.u_lb.is_(None), Bin.caliber.in_(overlap_cals))
+                ))
+        else:
+            if caliber_f:
+                q = q.filter(Bin.caliber == caliber_f)
+            if u_lb_f:
+                q = q.filter(Bin.u_lb == float(u_lb_f))
+
+        if calidad_f:
+            def _norm_aa(s):
+                return ''.join(c for c in _ud_aa.normalize('NFD', s.upper()) if _ud_aa.category(c) != 'Mn')
+            _GEN_AA = {'AGRICOLA','AGRO','AGROCOM','LTDA','LIMITADA','INVERSIONES','COMERCIAL',
+                       'SERVICIOS','SOCIEDAD','SPA','EXPORTADORA','VINA','AGR','SANTA','SAN',
+                       'SOC','EMPRESA','FUNDO','ALIMENTOS','FRUTAS','FRUTA'}
+            def _sig_aa(s):
+                return {w for w in _re_aa.findall(r'[A-Z]{5,}', _norm_aa(s)) if w not in _GEN_AA}
+            def _match_aa(a, b):
+                return a in b or b in a or bool(_sig_aa(a) & _sig_aa(b))
+            _votes_aa = _dd_aa(list)
+            for _dp, _dg in db.session.query(GuiaGrade.productor, GuiaGrade.grade)\
+                    .filter(GuiaGrade.productor.isnot(None), GuiaGrade.productor != '').all():
+                _votes_aa[_norm_aa(_dp)].append(_dg)
+            _dp_grade_aa = {p: _Ctr_aa(gs).most_common(1)[0][0] for p, gs in _votes_aa.items()}
+            _cq_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
+                         .join(GuiaGrade, GuiaGrade.guia == RecepcionLote.guia)
+                         .filter(GuiaGrade.grade == calidad_f).all()]
+            _cq_all_lotes = [r[0] for r in db.session.query(RecepcionLote.lote)
+                             .join(GuiaGrade, GuiaGrade.guia == RecepcionLote.guia).all()]
+            _pw_names_aa = [r[0] for r in db.session.query(Bin.producer_name).distinct() if r[0]]
+            _cq_prod_upper = []
+            for _pw in _pw_names_aa:
+                _un = _norm_aa(_pw)
+                for _dpn, _dg in _dp_grade_aa.items():
+                    if _dg == calidad_f and _match_aa(_dpn, _un):
+                        _cq_prod_upper.append(_pw.upper())
+                        break
+            _not_insp = db.or_(Bin.lote.is_(None), Bin.lote == '',
+                                ~Bin.lote.in_(_cq_all_lotes or ['__NONE__']))
+            q = q.filter(db.or_(
+                Bin.lote.in_(_cq_lotes or ['__NONE__']),
+                db.and_(_not_insp, db.func.upper(Bin.producer_name).in_(_cq_prod_upper or ['__NONE__']))
+            ))
+
+        if line.drying:
+            q = q.filter(Bin.drying == line.drying)
+        if line.temporada:
+            q = q.filter(Bin.temporada == line.temporada)
+        if line.max_humedad:
+            q = q.filter(db.or_(Bin.humedad.is_(None), Bin.humedad <= line.max_humedad))
+
+        all_bins = q.order_by(Bin.u_lb.asc().nulls_last(), Bin.bin_identifier).all()
+
+        accumulated = 0.0
+        to_allocate = []
+        for b in all_bins:
+            if accumulated >= needed:
+                break
+            to_allocate.append(b)
+            accumulated += (b.weight_kg or 0)
+
+        if not to_allocate:
+            flash('No hay bins disponibles con esos criterios.', 'err')
+            return redirect(url_for('order_detail', order_id=order_id, search_line=line_id))
+
+        count = 0
+        for b in to_allocate:
+            b_fresh = Bin.query.get(b.id)
+            if not b_fresh or b_fresh.status != 'available':
+                continue
+            try:
+                db.session.add(Allocation(order_id=order_id, line_id=line_id, bin_id=b_fresh.id))
+                b_fresh.status = 'allocated'
+                count += 1
+            except Exception:
+                db.session.rollback()
+
+        db.session.commit()
+        flash(f'⚡ Auto-selección: {count} bins asignados ({accumulated:,.1f} kg MP).', 'ok')
+        return redirect(url_for('order_detail', order_id=order_id))
+
     @app.route('/allocations/<int:alloc_id>/release', methods=['POST'])
     def release_bin(alloc_id):
         from models import Allocation, Bin, Excedente

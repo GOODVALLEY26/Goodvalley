@@ -295,14 +295,24 @@
 
     {% if search_line_id == line.id %}
       {% if search_bins or search_excedentes %}
+      {# Hidden form for server-side auto-allocate (all bins, no pagination limit) #}
+      <form id="auto-alloc-form-{{ line.id }}" method="post" style="display:none"
+            action="{{ url_for('auto_allocate_bins', order_id=order.id, line_id=line.id) }}">
+        <input type="hidden" name="calidad_f"  value="{{ calidad_f or '' }}">
+        <input type="hidden" name="caliber_f"  value="{{ caliber_f or '' }}">
+        {% if u_lb_lo_f is not none %}<input type="hidden" name="u_lb_lo_f" value="{{ u_lb_lo_f }}">{% endif %}
+        {% if u_lb_hi_f is not none %}<input type="hidden" name="u_lb_hi_f" value="{{ u_lb_hi_f }}">{% endif %}
+        {% if u_lb_f    is not none %}<input type="hidden" name="u_lb_f"    value="{{ u_lb_f }}">{% endif %}
+      </form>
+
       <form method="post" action="{{ url_for('allocate_bins', order_id=order.id, line_id=line.id) }}"
             id="alloc-form-{{ line.id }}">
 
         <div class="sel-bar">
           <span>Selección: <strong id="sel-count-{{ line.id }}">0</strong> elemento(s) · <strong id="sel-kg-{{ line.id }}">0,0</strong> kg</span>
           <div style="display:flex;gap:8px">
-            <button class="btn btn-sync" type="button" onclick="autoSelect{{ line.id }}()"
-                    title="Selecciona los bins necesarios para cubrir los kg que faltan">
+            <button class="btn btn-sync" type="submit" form="auto-alloc-form-{{ line.id }}"
+                    title="Selecciona automáticamente los bins necesarios buscando en toda la base de datos">
               ⚡ Auto-seleccionar
             </button>
             <button class="btn btn-primary" type="submit">Asignar seleccionados</button>
