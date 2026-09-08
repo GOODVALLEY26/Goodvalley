@@ -3922,16 +3922,23 @@ function upload() {
         q_init    = request.args.get('q', '')
 
         # ── Saldo dashboard stats (tipo + calibre breakdown) ──────────────────
+        _TIPO_ABBR = {
+            'CONDICION NATURAL': 'CN', 'CONDICIÓN NATURAL': 'CN',
+            'CONDICION_NATURAL': 'CN', 'CONDICIÓN_NATURAL': 'CN',
+        }
+        def _norm_tipo(t):
+            u = (t or '').strip().upper()
+            return _TIPO_ABBR.get(u, u) or '—'
         _tipo_st, _cal_st = {}, {}
         def _stat_add(d, key, kg):
             if key not in d: d[key] = {'kg': 0.0, 'n': 0}
             d[key]['kg'] += kg or 0; d[key]['n'] += 1
         for _s in saldos:
             for _r in _s['tarjas']:
-                _stat_add(_tipo_st, (_r.tipoproceso or '').strip().upper() or '—', _r.neto or 0)
-                _stat_add(_cal_st,  (_r.serie       or '').strip()        or '—', _r.neto or 0)
+                _stat_add(_tipo_st, _norm_tipo(_r.tipoproceso), _r.neto or 0)
+                _stat_add(_cal_st,  (_r.serie or '').strip() or '—', _r.neto or 0)
         for _p in saldo_pallets:
-            _stat_add(_tipo_st, pallet_tipo_map.get((_p.tarja or '').strip(), '').upper() or '—', _p.weight_kg or 0)
+            _stat_add(_tipo_st, _norm_tipo(pallet_tipo_map.get((_p.tarja or '').strip(), '')), _p.weight_kg or 0)
             _stat_add(_cal_st,  (_p.caliber or '').strip() or '—', _p.weight_kg or 0)
         tipo_stats    = sorted(_tipo_st.items(), key=lambda x: x[1]['kg'], reverse=True)
         cal_stats     = sorted(_cal_st.items(),  key=lambda x: x[1]['kg'], reverse=True)
@@ -3952,6 +3959,7 @@ function upload() {
             tipo_stats=tipo_stats,
             cal_stats=cal_stats,
             total_saldo_kg=total_saldo_kg,
+            TIPO_ABBR=_TIPO_ABBR,
         )
 
     # ── Rendimientos ──────────────────────────────────────────────────────────
