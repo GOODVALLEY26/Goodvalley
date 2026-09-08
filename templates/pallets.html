@@ -85,6 +85,118 @@
    ════════════════════════════════════════════════════════════════ #}
 <div id="panel-saldos">
 
+{# ── Visual dashboard ── #}
+{% if total_saldo_kg > 0 %}
+<style>
+  .pb-dash { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:20px 22px; margin-bottom:24px; }
+  .pb-dash-hdr { display:flex; align-items:baseline; gap:10px; margin-bottom:16px; }
+  .pb-dash-title { font-size:.7rem; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); font-weight:700; }
+  .pb-dash-kg { font-size:1.25rem; font-weight:700; color:var(--fg); }
+  .pb-dash-sub { font-size:12px; color:var(--muted); }
+  .pb-divider { height:1px; background:var(--border); margin:18px 0; }
+  .pb-sec-label { font-size:.65rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700; margin-bottom:10px; }
+  .pb-bar { height:28px; display:flex; overflow:hidden; border-radius:5px; background:var(--border); }
+  .pb-seg { height:100%; transition:opacity .15s; cursor:default; }
+  .pb-seg:hover { opacity:.8; }
+  .pb-bar-lbls { display:flex; margin-top:4px; font-size:10px; color:var(--muted); gap:0; }
+  .pb-gr { display:grid; grid-template-columns:52px 48px 1fr 64px; align-items:center; gap:8px; margin-bottom:7px; }
+  .pb-badge { font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; text-align:center; white-space:nowrap; }
+  .pb-gr-count { font-size:11px; color:var(--muted); text-align:right; }
+  .pb-gr-track { height:8px; background:var(--border); border-radius:4px; overflow:hidden; }
+  .pb-gr-fill { height:100%; border-radius:4px; transition:width .3s; }
+  .pb-gr-kg { font-size:11px; color:var(--fg); font-weight:600; font-variant-numeric:tabular-nums; }
+  .pb-legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+  .pb-li { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); }
+  .pb-sw { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+</style>
+
+{% set tipo_colors = {
+  'TSC':    '#7c3aed',
+  'TCC':    '#2563eb',
+  'SS':     '#059669',
+  'ELLIOT': '#d97706',
+  'CN':     '#0891b2',
+  'R':      '#dc2626',
+  '—':      '#9ca3af'
+} %}
+{% set cal_colors = ['#7c3aed','#2563eb','#059669','#d97706','#0891b2','#dc2626','#be185d','#65a30d'] %}
+
+<div class="pb-dash">
+  <div class="pb-dash-hdr">
+    <span class="pb-dash-title">Resumen en Bodega</span>
+    <span class="pb-dash-kg">{{ "{:,.0f}".format(total_saldo_kg) }} kg</span>
+    <span class="pb-dash-sub">en saldo total</span>
+  </div>
+
+  {# ── Stacked bar by tipo ── #}
+  <div class="pb-sec-label">Por tipo de proceso</div>
+  <div class="pb-bar">
+    {% for tipo, st in tipo_stats %}
+      {% set pct = (st.kg / total_saldo_kg * 100) if total_saldo_kg > 0 else 0 %}
+      {% set col = tipo_colors.get(tipo, '#9ca3af') %}
+      <div class="pb-seg" style="width:{{ pct }}%;background:{{ col }}"
+           title="{{ tipo }}: {{ '{:,.0f}'.format(st.kg) }} kg ({{ '%.1f'|format(pct) }}%)"></div>
+    {% endfor %}
+  </div>
+  <div style="height:6px"></div>
+
+  {# ── Track rows by tipo ── #}
+  {% for tipo, st in tipo_stats %}
+    {% set pct = (st.kg / total_saldo_kg * 100) if total_saldo_kg > 0 else 0 %}
+    {% set col = tipo_colors.get(tipo, '#9ca3af') %}
+    <div class="pb-gr">
+      <span class="pb-badge" style="background:{{ col }}20;color:{{ col }}">{{ tipo }}</span>
+      <span class="pb-gr-count">{{ st.n }} tar.</span>
+      <div class="pb-gr-track">
+        <div class="pb-gr-fill" style="width:{{ pct }}%;background:{{ col }}"></div>
+      </div>
+      <span class="pb-gr-kg">{{ "{:,.0f}".format(st.kg) }} kg</span>
+    </div>
+  {% endfor %}
+
+  <div class="pb-divider"></div>
+
+  {# ── Stacked bar by calibre ── #}
+  <div class="pb-sec-label">Por calibre</div>
+  <div class="pb-bar">
+    {% for idx in range(cal_stats | length) %}
+      {% set cal = cal_stats[idx][0] %}
+      {% set st  = cal_stats[idx][1] %}
+      {% set pct = (st.kg / total_saldo_kg * 100) if total_saldo_kg > 0 else 0 %}
+      {% set col = cal_colors[idx % (cal_colors | length)] %}
+      <div class="pb-seg" style="width:{{ pct }}%;background:{{ col }}"
+           title="{{ cal }}: {{ '{:,.0f}'.format(st.kg) }} kg ({{ '%.1f'|format(pct) }}%)"></div>
+    {% endfor %}
+  </div>
+  <div style="height:6px"></div>
+
+  {# ── Track rows by calibre ── #}
+  {% for idx in range(cal_stats | length) %}
+    {% set cal = cal_stats[idx][0] %}
+    {% set st  = cal_stats[idx][1] %}
+    {% set pct = (st.kg / total_saldo_kg * 100) if total_saldo_kg > 0 else 0 %}
+    {% set col = cal_colors[idx % (cal_colors | length)] %}
+    <div class="pb-gr">
+      <span class="pb-badge" style="background:{{ col }}20;color:{{ col }}">{{ cal }}</span>
+      <span class="pb-gr-count">{{ st.n }} tar.</span>
+      <div class="pb-gr-track">
+        <div class="pb-gr-fill" style="width:{{ pct }}%;background:{{ col }}"></div>
+      </div>
+      <span class="pb-gr-kg">{{ "{:,.0f}".format(st.kg) }} kg</span>
+    </div>
+  {% endfor %}
+
+  {# ── Legend ── #}
+  <div class="pb-legend">
+    {% for tipo, st in tipo_stats %}
+      {% set col = tipo_colors.get(tipo, '#9ca3af') %}
+      <div class="pb-li"><span class="pb-sw" style="background:{{ col }}"></span>{{ tipo }}</div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{# ── End visual dashboard ── #}
+
 {% if saldos %}
 <h2 style="font-size:.75rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
            margin:0 0 8px;display:flex;align-items:center;gap:8px">
