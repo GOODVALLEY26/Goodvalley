@@ -4609,7 +4609,20 @@ def _run_sync(flask_app):
                 if new_batch:
                     db.session.bulk_save_objects(new_batch)
                 db.session.commit()
-                flask_app.logger.info(f'[auto-sync] Bins: {len(new_batch)} new, {updated} updated')
+
+                # Delete available bins that no longer exist in pWarehouse
+                seen_ids  = {str(b.get('bin_identifier', '')).strip() for b in bins_data}
+                gone_ids  = set(existing_map.keys()) - seen_ids
+                gone_count = 0
+                if gone_ids:
+                    db.session.query(_Bin2).filter(
+                        _Bin2.bin_identifier.in_(gone_ids),
+                        _Bin2.status == 'available',
+                    ).delete(synchronize_session=False)
+                    db.session.commit()
+                    gone_count = len(gone_ids)
+
+                flask_app.logger.info(f'[auto-sync] Bins: {len(new_batch)} new, {updated} updated, {gone_count} removed')
             except Exception as e:
                 db.session.rollback()
                 flask_app.logger.error(f'[auto-sync] bins import error: {e}')
