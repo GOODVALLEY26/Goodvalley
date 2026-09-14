@@ -166,6 +166,13 @@
       </div>
       <span id="dry-sum" style="font-size:13px;font-weight:700;white-space:nowrap;margin-left:16px"></span>
     </div>
+    {# Stock disponible por secado #}
+    <div id="dry-stock" style="display:none;background:var(--lavender);border-radius:7px;
+         padding:10px 14px;margin-top:10px;margin-bottom:4px;font-size:12px">
+      <span style="font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;
+                   color:var(--purple);font-weight:700">Stock disponible</span>
+      <div id="dry-stock-rows" style="display:flex;gap:20px;flex-wrap:wrap;margin-top:6px"></div>
+    </div>
     <div id="dry-rows" style="display:flex;flex-direction:column;gap:8px;margin-top:12px"></div>
   </div>
 
@@ -505,6 +512,48 @@ function renderDryRows() {
     );
   });
   updateBudget('dry');
+  fetchDryStock();
+}
+
+function fetchDryStock() {
+  var params = new URLSearchParams();
+  var tab = (typeof activeDistTab !== 'undefined') ? activeDistTab : 'calibre';
+  if (tab === 'serie') {
+    var loEl = document.querySelector('#serie-rows [data-field="lo"]');
+    var hiEl = document.querySelector('#serie-rows [data-field="hi"]');
+    if (loEl && hiEl) {
+      params.set('u_lb_lo', loEl.textContent.trim());
+      params.set('u_lb_hi', hiEl.textContent.trim());
+    }
+  } else {
+    var cal = document.getElementById('customer-caliber').value;
+    if (cal) params.set('caliber', cal);
+  }
+  var temporada = document.querySelector('[name="temporada"]').value.trim();
+  if (temporada) params.set('temporada', temporada);
+  var maxHum = document.querySelector('[name="max_humedad"]').value.trim();
+  if (maxHum) params.set('max_humedad', maxHum);
+
+  if (!params.has('caliber') && !params.has('u_lb_lo')) return;
+
+  fetch('/api/stock/drying-summary?' + params.toString(), {credentials: 'include'})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var box  = document.getElementById('dry-stock');
+      var rows = document.getElementById('dry-stock-rows');
+      if (!data.rows || !data.rows.length) { box.style.display = 'none'; return; }
+      rows.innerHTML = data.rows.map(function(r) {
+        return '<div style="display:flex;flex-direction:column;gap:1px">'
+          + '<span style="font-weight:700;color:var(--fg)">'
+            + r.kg.toLocaleString('es-CL', {maximumFractionDigits:0}) + ' kg'
+          + '</span>'
+          + '<span style="color:var(--purple);font-size:11px">' + r.label + '</span>'
+          + '<span style="color:var(--muted);font-size:10px">' + r.n + ' bins</span>'
+        + '</div>';
+      }).join('');
+      box.style.display = 'block';
+    })
+    .catch(function() {});
 }
 
 // ── Budget: disable quick-select buttons that would exceed remaining % ─────
@@ -687,8 +736,15 @@ function validateForm() {
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
-document.getElementById('customer-caliber').addEventListener('change', onCustomerCaliberChange);
+document.getElementById('customer-caliber').addEventListener('change', function() {
+  onCustomerCaliberChange();
+  fetchDryStock();
+});
 document.getElementById('sel-tipo').addEventListener('change', updatePreview);
+// Refresh stock summary when serie spinners change
+document.addEventListener('input', function(e) {
+  if (e.target && e.target.classList.contains('spin-num')) fetchDryStock();
+});
 renderDryRows();
 </script>
 

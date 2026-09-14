@@ -3639,6 +3639,45 @@ function upload() {
             flash(f'Error al importar bins: {e}', 'err')
         return redirect(url_for('list_bins'))
 
+    @app.route('/api/stock/drying-summary')
+    @login_required
+    def api_stock_drying_summary():
+        """Return available kg by drying method for given caliber/serie/temporada criteria."""
+        from models import Bin as _Bin3
+        from sqlalchemy import func as _func3
+
+        u_lb_lo  = request.args.get('u_lb_lo',  type=float)
+        u_lb_hi  = request.args.get('u_lb_hi',  type=float)
+        caliber  = (request.args.get('caliber') or '').strip()
+        temporada = (request.args.get('temporada') or '').strip()
+        max_hum  = request.args.get('max_humedad', type=float)
+
+        q = db.session.query(
+            _Bin3.drying,
+            _func3.sum(_Bin3.weight_kg).label('kg'),
+            _func3.count(_Bin3.id).label('n'),
+        ).filter(_Bin3.status == 'available')
+
+        if u_lb_lo is not None and u_lb_hi is not None:
+            q = q.filter(_Bin3.u_lb >= u_lb_lo, _Bin3.u_lb <= u_lb_hi)
+        elif caliber:
+            q = q.filter(_Bin3.caliber == caliber)
+
+        if temporada:
+            q = q.filter(_Bin3.temporada == temporada)
+        if max_hum:
+            q = q.filter(db.or_(_Bin3.humedad.is_(None), _Bin3.humedad <= max_hum))
+
+        rows = q.group_by(_Bin3.drying).all()
+        _LABELS = {'horno': 'Horno', 'cancha': 'Sol', 'termino_secado': 'Término Secado'}
+        result = [
+            {'drying': r.drying, 'label': _LABELS.get(r.drying, r.drying),
+             'kg': round(float(r.kg or 0), 1), 'n': r.n}
+            for r in rows if r.drying
+        ]
+        total = sum(x['kg'] for x in result)
+        return {'rows': result, 'total': round(total, 1)}
+
     @app.route('/api/import-historico', methods=['POST'])
     def api_import_historico():
         """Passcode-protected endpoint for Google Apps Script to POST a Historico Excel."""
