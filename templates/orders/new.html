@@ -367,6 +367,7 @@ function switchDistTab(tab) {
     panel.style.display         = act ? '' : 'none';
   });
   updateBudget(tab === 'calibre' ? 'cal' : 'serie');
+  fetchDryStock();
 }
 
 // ── Spinners for serie rows ────────────────────────────────────────────────
@@ -386,6 +387,7 @@ function spinAdj(btn, delta) {
   } else if (field === 'hi' && idx < rows.length - 1) {
     rows[idx + 1].querySelector('[data-field="lo"]').textContent = newVal;
   }
+  fetchDryStock();
 }
 
 function buildSerieRow(lo, hi, pctVal) {
@@ -741,10 +743,6 @@ document.getElementById('customer-caliber').addEventListener('change', function(
   fetchDryStock();
 });
 document.getElementById('sel-tipo').addEventListener('change', updatePreview);
-// Refresh stock summary when serie spinners change
-document.addEventListener('input', function(e) {
-  if (e.target && e.target.classList.contains('spin-num')) fetchDryStock();
-});
 renderDryRows();
 </script>
 
