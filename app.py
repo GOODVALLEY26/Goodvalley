@@ -2683,7 +2683,7 @@ function upload() {
         Proceso.query.delete(synchronize_session=False)
         HistoricoMovimiento.query.delete(synchronize_session=False)
         db.session.commit()
-        flash('Reset completo — procesos, embarques, descartes y saldos eliminados.', 'ok')
+        flash('Reset completo — procesos, salidas de planta, descartes y saldos eliminados.', 'ok')
         return redirect(url_for('list_procesos'))
 
     @app.route('/orders/<int:order_id>/delete', methods=['POST'])

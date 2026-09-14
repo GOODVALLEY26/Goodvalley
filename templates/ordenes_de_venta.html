@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
-{% block title %}Embarques · Goodvalley{% endblock %}
+{% block title %}Salida de Planta · Goodvalley{% endblock %}
 
 {% block content %}
 <div class="row-between">
   <div>
-    <h1>Embarques</h1>
+    <h1>Salida de Planta</h1>
     <p class="muted">
-      Órdenes de embarque, basado en Base Histórica.
+      Salidas de planta, basado en Base Histórica.
       {% if last_imported %}· importado {{ (last_imported|santiago).strftime('%d-%m-%Y %H:%M') }}{% endif %}
     </p>
   </div>
@@ -17,7 +17,7 @@
     </div>
     <div class="card" style="padding:12px 22px">
       <div class="big" style="font-size:1.5rem">{{ "{:,.0f}".format(total_kg) }}</div>
-      <div class="lbl" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px">KG Embarcados</div>
+      <div class="lbl" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px">KG Salidos</div>
     </div>
   </div>
 </div>
@@ -42,11 +42,11 @@
     <th>OT</th>
     <th>Cliente</th>
     <th class="num">KG Salida (Bueno)</th>
-    <th class="num">KG Embarcados</th>
-    <th class="num">% Embarcado</th>
+    <th class="num">KG Salidos</th>
+    <th class="num">% Salido</th>
     <th class="num">Humedad</th>
-    <th>Primer Embarque</th>
-    <th>Último Embarque</th>
+    <th>Primera Salida</th>
+    <th>Última Salida</th>
     <th>Proceso</th>
   </tr></thead>
   <tbody>
@@ -108,7 +108,7 @@ function filterOdv(q) {
 </script>
 {% else %}
 <div class="empty">
-  <p>No hay embarques importados todavía.</p>
+  <p>No hay salidas de planta importadas todavía.</p>
   <p class="muted" style="margin-top:6px">
     Presioná <strong>Actualizar → Subir Histórico</strong> para importar el archivo Excel.
   </p>

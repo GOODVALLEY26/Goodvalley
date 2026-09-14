@@ -20,7 +20,7 @@
     <a href="{{ url_for('list_procesos') }}"
        class="{{ 'on' if request.endpoint in ('list_procesos','proceso_detail') else '' }}">Procesos</a>
     <a href="{{ url_for('list_ordenes_de_venta') }}"
-       class="{{ 'on' if request.endpoint in ('list_ordenes_de_venta','orden_de_venta_detail') else '' }}">Embarques</a>
+       class="{{ 'on' if request.endpoint in ('list_ordenes_de_venta','orden_de_venta_detail') else '' }}">Salida de Planta</a>
     <a href="{{ url_for('list_descartes') }}"
        class="{{ 'on' if request.endpoint == 'list_descartes' else '' }}">Descartes</a>
     <a href="{{ url_for('list_pallets') }}"

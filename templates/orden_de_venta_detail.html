@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
-{% block title %}OT {{ base_ot }} · Embarques · Goodvalley{% endblock %}
+{% block title %}OT {{ base_ot }} · Salida de Planta · Goodvalley{% endblock %}
 
 {% block content %}
 <div style="margin-bottom:18px;display:flex;align-items:center;gap:16px">
-  <a href="{{ url_for('list_ordenes_de_venta') }}" style="color:var(--purple);font-size:13px">← Embarques</a>
+  <a href="{{ url_for('list_ordenes_de_venta') }}" style="color:var(--purple);font-size:13px">← Salida de Planta</a>
   <a href="{{ url_for('proceso_detail', ot=base_ot) }}"
      class="btn" style="font-size:12px;padding:5px 14px;background:var(--card);border:1px solid var(--border);color:var(--purple)">
     Ver en Procesos →
@@ -18,8 +18,8 @@
 
 {% if not sub_ords %}
 <div class="empty" style="margin-top:32px">
-  <p style="font-size:15px;margin-bottom:8px">No hay embarques registrados para OT <strong>{{ base_ot }}</strong>.</p>
-  <p class="muted" style="font-size:13px">Esta OT puede estar aún en proceso o los embarques no han sido importados en el histórico.</p>
+  <p style="font-size:15px;margin-bottom:8px">No hay salidas de planta registradas para OT <strong>{{ base_ot }}</strong>.</p>
+  <p class="muted" style="font-size:13px">Esta OT puede estar aún en proceso o las salidas de planta no han sido importadas en el histórico.</p>
 </div>
 {% else %}
 
@@ -66,7 +66,7 @@
       <div style="font-size:1.8rem;font-weight:700;color:var(--purple)">
         {{ "{:,.1f}".format(o.kg_embarcado) if o.kg_embarcado else '—' }}
       </div>
-      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-top:4px">KG Embarcados</div>
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-top:4px">KG Salidos</div>
     </div>
     {% if o.proceso and o.proceso.kg_salida_bueno and o.kg_embarcado %}
     <div class="card" style="padding:18px 24px;text-align:center;flex:1;min-width:130px">
@@ -74,7 +74,7 @@
       <div style="font-size:1.8rem;font-weight:700;color:{% if pct >= 95 %}#2d6a4f{% elif pct >= 50 %}#e67e22{% else %}#e74c3c{% endif %}">
         {{ "{:.0f}".format(pct) }}%
       </div>
-      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-top:4px">% Embarcado</div>
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-top:4px">% Salido</div>
     </div>
     {% endif %}
     <div class="card" style="padding:18px 24px;flex:1;min-width:160px">
@@ -103,11 +103,11 @@
     {% endif %}
   </div>
 
-  {# Embarque rows #}
+  {# Salida rows #}
   {% set embarques = embarques_by_ot[o.ot] %}
   {% if embarques %}
   <h2 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px">
-    Detalle de embarques ({{ embarques|length }})
+    Detalle de salidas de planta ({{ embarques|length }})
   </h2>
   <table class="grid tight">
     <thead><tr>
@@ -150,7 +150,7 @@
   </table>
   {% else %}
   <div class="empty" style="margin-top:24px">
-    <p>No hay filas de embarque para esta OT.</p>
+    <p>No hay filas de salida de planta para esta OT.</p>
   </div>
   {% endif %}
 

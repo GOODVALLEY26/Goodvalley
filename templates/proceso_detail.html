@@ -6,7 +6,7 @@
   <a href="{{ url_for('list_procesos') }}" style="color:var(--purple);font-size:13px">← Procesos</a>
   <a href="{{ url_for('orden_de_venta_detail', ot=base_ot) }}"
      class="btn" style="font-size:12px;padding:5px 14px;background:var(--card);border:1px solid var(--border);color:var(--purple)">
-    Ver en Embarques →
+    Ver en Salida de Planta →
   </a>
 </div>
 
@@ -214,7 +214,7 @@
         <div style="font-size:1.2rem;font-weight:700;color:#5b21b6">
           {{ "{:,.1f}".format(ns.kg_emb) if ns.kg_emb else '—' }} kg
         </div>
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Embarque</div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Salida de Planta</div>
       </div>
       <div>
         <div style="font-size:1.2rem;font-weight:700;color:var(--purple)">
