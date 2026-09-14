@@ -196,7 +196,7 @@ def create_app():
             db.session.commit()
 
     # ── Block every route for unauthenticated users ───────────────────────────
-    _PUBLIC_ENDPOINTS = {'login', 'static', 'api_import_historico', 'api_sync_trigger', 'api_import_recepciones', 'debug_grade_counts', 'sync_upload'}
+    _PUBLIC_ENDPOINTS = {'login', 'static', 'api_import_historico', 'api_sync_trigger', 'api_import_recepciones', 'debug_grade_counts', 'sync_upload', 'api_stock_drying_summary'}
 
     @app.before_request
     def require_login():
@@ -1144,11 +1144,13 @@ def create_app():
                 weight = float(b.get('weight_kg') or 0)
                 lote_val = str(b.get('lote') or '').strip() or None
 
+                _u_lb_val = b.get('u_lb')
                 if bid in existing_map:
                     db.session.query(Bin).filter_by(id=existing_map[bid]).update({
                         'weight_kg': weight,
                         'humedad': b.get('humedad'),
                         'caliber': b.get('caliber') or '',
+                        'u_lb': _u_lb_val,
                         'drying': drying,
                         'producto': b.get('producto') or '',
                         'contenedor': b.get('contenedor') or '',
@@ -1162,6 +1164,7 @@ def create_app():
                         bin_identifier=bid,
                         producto=b.get('producto') or '',
                         caliber=b.get('caliber') or '',
+                        u_lb=_u_lb_val,
                         drying=drying,
                         weight_kg=weight,
                         humedad=b.get('humedad'),
