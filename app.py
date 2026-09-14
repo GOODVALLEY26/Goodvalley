@@ -2609,11 +2609,36 @@ function upload() {
 
         accumulated = 0.0
         to_allocate = []
-        for b in all_bins:
-            if accumulated >= needed:
-                break
-            to_allocate.append(b)
-            accumulated += (b.weight_kg or 0)
+
+        if _is_serie_range and line.caliber and '-' in line.caliber:
+            # Even split: target kg divided equally across each u/lb in the range.
+            # If a serie doesn't have enough, take whatever is available.
+            _parts     = line.caliber.split('-')
+            _lo, _hi   = int(_parts[0]), int(_parts[1])
+            _serie_vals = list(range(_lo, _hi + 1))
+            _target_each = needed / len(_serie_vals) if _serie_vals else needed
+
+            from collections import defaultdict as _dfd
+            _bins_by_ulb = _dfd(list)
+            for b in all_bins:
+                _ulb = int(b.u_lb) if b.u_lb is not None else None
+                if _ulb is not None:
+                    _bins_by_ulb[_ulb].append(b)
+
+            for _sv in _serie_vals:
+                _acc_sv = 0.0
+                for b in _bins_by_ulb.get(_sv, []):
+                    if _acc_sv >= _target_each:
+                        break
+                    to_allocate.append(b)
+                    _acc_sv   += (b.weight_kg or 0)
+                    accumulated += (b.weight_kg or 0)
+        else:
+            for b in all_bins:
+                if accumulated >= needed:
+                    break
+                to_allocate.append(b)
+                accumulated += (b.weight_kg or 0)
 
         if not to_allocate:
             flash('No hay bins disponibles con esos criterios.', 'err')
