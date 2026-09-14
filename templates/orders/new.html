@@ -403,11 +403,8 @@ function buildSerieRow(lo, hi, pctVal) {
       + '<span class="spin-num" data-field="hi" contenteditable="true">' + hi + '</span>'
       + '<button type="button" class="spin-btn" onclick="spinAdj(this,1)">▲</button>'
     + '</div>'
-    + '<input class="pct-input" type="number" placeholder="0"'
-      + ' value="' + (pctVal || '') + '" min="0" max="100" step="0.1"'
-      + ' oninput="onPctInputEl(this)" style="margin-left:10px">'
-    + '<span class="pct-sym">%</span>'
-    + '<div class="qbtns-wrap">' + btnsHtml + '</div>';
+    + '<input class="pct-input" type="hidden" value="100">'
+    + '<span style="margin-left:12px;font-size:13px;color:var(--muted)">100%</span>';
 
   return div;
 }
@@ -653,11 +650,6 @@ function validateForm() {
   }
 
   if (activeDistTab === 'serie') {
-    var ss = getSectionSum('serie');
-    if (Math.abs(ss - 100) > 0.5) {
-      alert('Los % de serie deben sumar 100%. Ahora suman ' + ss + '%.');
-      return false;
-    }
     // Disable calibre panel inputs so they don't get submitted
     document.querySelectorAll('#panel-calibre input').forEach(function(el) { el.disabled = true; });
     // Clean up any previous injection, then inject serie hidden inputs
