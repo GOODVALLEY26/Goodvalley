@@ -4626,32 +4626,36 @@ def _run_sync(flask_app):
     import subprocess, sys, json as _json, datetime as _dt, uuid as _uuid2, os
     from pathlib import Path as _Path2
 
-    job_id       = _uuid2.uuid4().hex[:8]
-    bins_path    = _Path2(f'/tmp/gv_bins_{job_id}.json')
-    pallets_path = _Path2(f'/tmp/gv_pallets_{job_id}.json')
-    scraper      = _Path2(__file__).parent / 'scrape_full.py'
-
-    env = {**os.environ, 'GV_NO_UPLOAD': '1',
-           'GV_BINS_OUT': str(bins_path),
-           'GV_PALLETS_OUT': str(pallets_path)}
-
-    _sync_lines = []
-    proc = subprocess.Popen(
-        [sys.executable, str(scraper)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1, env=env,
-    )
-    for line in proc.stdout:
-        flask_app.logger.info(f'[auto-sync] {line.rstrip()}')
-        _sync_lines.append(line.rstrip())
-    proc.wait()
+    _Path2('/tmp/gv_last_sync.txt').write_text('STARTED at %s' % _dt.datetime.utcnow().isoformat())
 
     try:
+        job_id       = _uuid2.uuid4().hex[:8]
+        bins_path    = _Path2(f'/tmp/gv_bins_{job_id}.json')
+        pallets_path = _Path2(f'/tmp/gv_pallets_{job_id}.json')
+        scraper      = _Path2(__file__).parent / 'scrape_full.py'
+
+        env = {**os.environ, 'GV_NO_UPLOAD': '1',
+               'GV_BINS_OUT': str(bins_path),
+               'GV_PALLETS_OUT': str(pallets_path)}
+
+        _sync_lines = []
+        proc = subprocess.Popen(
+            [sys.executable, str(scraper)],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, env=env,
+        )
+        for line in proc.stdout:
+            flask_app.logger.info(f'[auto-sync] {line.rstrip()}')
+            _sync_lines.append(line.rstrip())
+        proc.wait()
+
         _Path2('/tmp/gv_last_sync.txt').write_text(
             'rc=%d\n\n%s' % (proc.returncode, '\n'.join(_sync_lines[-80:]))
         )
-    except Exception:
-        pass
+    except Exception as _run_err:
+        _Path2('/tmp/gv_last_sync.txt').write_text('EXCEPTION: %s' % _run_err)
+        flask_app.logger.error(f'[auto-sync] exception: {_run_err}')
+        return
 
     if proc.returncode != 0:
         flask_app.logger.error(f'[auto-sync] scraper exited {proc.returncode}')
