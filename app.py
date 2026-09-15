@@ -196,7 +196,7 @@ def create_app():
             db.session.commit()
 
     # ── Block every route for unauthenticated users ───────────────────────────
-    _PUBLIC_ENDPOINTS = {'login', 'static', 'api_import_historico', 'api_sync_trigger', 'api_import_recepciones', 'debug_grade_counts', 'sync_upload', 'api_stock_drying_summary'}
+    _PUBLIC_ENDPOINTS = {'login', 'static', 'api_import_historico', 'api_sync_trigger', 'api_import_recepciones', 'debug_grade_counts', 'sync_upload', 'api_stock_drying_summary', 'api_sync_status_check'}
 
     @app.before_request
     def require_login():
@@ -3704,6 +3704,29 @@ function upload() {
 
         _threading.Thread(target=_run, daemon=True).start()
         return {'ok': True, 'status': 'import started in background'}, 202
+
+    @app.route('/api/sync-status-check', methods=['POST'])
+    def api_sync_status_check():
+        passcode = (request.form.get('passcode') or request.headers.get('X-Passcode') or '').strip()
+        if passcode != '001083748':
+            return {'error': 'unauthorized'}, 401
+        import subprocess, sys, os as _os
+        from pathlib import Path as _Path3
+        scraper = _Path3(__file__).parent / 'scrape_full.py'
+        env = {**_os.environ, 'GV_NO_UPLOAD': '1',
+               'GV_BINS_OUT': '/tmp/gv_debug_bins.json',
+               'GV_PALLETS_OUT': '/tmp/gv_debug_pallets.json'}
+        proc = subprocess.run(
+            [sys.executable, str(scraper)],
+            capture_output=True, text=True, timeout=120, env=env,
+        )
+        return {
+            'returncode': proc.returncode,
+            'stdout': proc.stdout[-3000:],
+            'stderr': proc.stderr[-1000:],
+            'rut_set': bool(_os.environ.get('PWAREHOUSE_RUT')),
+            'pass_set': bool(_os.environ.get('PWAREHOUSE_PASS')),
+        }
 
     @app.route('/api/sync-trigger', methods=['POST'])
     def api_sync_trigger():
