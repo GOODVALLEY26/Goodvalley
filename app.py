@@ -304,7 +304,7 @@ def create_app():
         n_open  = Order.query.filter(Order.status.in_(['open', 'confirmed'])).count()
         alloc_n = Allocation.query.count()
 
-        # Last sync time: most recent synced_at from Pallets (Bins don't track this)
+        # Last sync time: most recent synced_at from Pallets
         last_sync = db.session.query(func.max(Pallet.synced_at)).scalar()
 
         # Summary by caliber + drying (available bins only) — existing table

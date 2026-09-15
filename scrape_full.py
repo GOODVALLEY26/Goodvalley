@@ -270,8 +270,8 @@ def _transform_bins(raw_rows):
 # ── Transform: Pallets en Bodega ──────────────────────────────────────────────
 # xlsx column order: TARJA(0) S_PALLET_CLASE(1) PALLET_ESTADO_OT(2)
 #   HORAPRODUCCION(3) FECHAPRODUCCION(4) OT(5) TIPOPROCESO(6) CONTENEDOR(7)
-#   PRODUCTO(8) RUTEXPORTADOR(9) EXPORTADOR(10) SERIE(11) UNIDADES(12)
-#   NETO(kg)(13) CLIENTE(14) ESTADO(15)
+#   PRODUCTO(8) RUTEXPORTADOR(9) EXPORTADOR(10) ?(11) SERIE(12) UNIDADES(13)
+#   NETO(kg)(14) CLIENTE(15) ESTADO(16)  ← pWarehouse added col at 11 in 2026
 
 def _transform_pallets(raw_rows):
     pallets = []
@@ -294,15 +294,17 @@ def _transform_pallets(raw_rows):
         tarja   = str(_rv(row, 'TARJA', 0) or '').strip()
         ot      = str(_rv(row, 'OT', 5) or '').strip()
         tipo    = str(_rv(row, 'TIPOPROCESO', 6) or '').strip()
-        serie   = str(_rv(row, 'SERIE', 11) or '').strip()
-        neto    = _rv(row, 'NETO(kg)', 'NETO', 13)
-        cliente = str(_rv(row, 'CLIENTE', 14) or '').strip()
-        estado  = str(_rv(row, 'ESTADO', 15) or '').strip()
+        serie   = str(_rv(row, 'SERIE', 12) or '').strip()
+        neto    = _rv(row, 'NETO(kg)', 'NETO', 14)
+        cliente = str(_rv(row, 'CLIENTE', 15) or '').strip()
+        estado  = str(_rv(row, 'ESTADO', 16) or '').strip()
 
-        if not tarja or not ot or not cliente:
+        if not tarja or not ot:
             continue
-        if estado and 'DISPONIBLE' not in estado.upper() and estado:
-            continue  # skip non-available pallets
+        # skip only if explicitly marked as shipped/embarcado
+        _bad = ('EMBARCADO', 'SALIDA', 'EXPORTADO')
+        if estado and any(b in estado.upper() for b in _bad):
+            continue
 
         try:
             kg = float(neto) if neto not in (None, '', 'None') else 0.0
