@@ -3,6 +3,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 _TZ = ZoneInfo('America/Santiago')
+_LAST_SYNC_OUTPUT = ''
+_LAST_SYNC_RC = None
 
 def _to_santiago(dt):
     """Convert a naive UTC datetime to Santiago local time."""
@@ -3707,14 +3709,11 @@ function upload() {
 
     @app.route('/api/sync-status-check', methods=['POST'])
     def api_sync_status_check():
-        import os as _os
+        import os as _os, app as _am
         _passcode = request.headers.get('X-Passcode', '') or ''
         if _passcode.strip() != '001083748':
             return 'unauthorized', 401
-        _rut  = _os.environ.get('PWAREHOUSE_RUT',  'NOT_SET')
-        _pass = _os.environ.get('PWAREHOUSE_PASS', 'NOT_SET')
-        _url  = _os.environ.get('PWAREHOUSE_URL',  'NOT_SET')
-        return 'rut=%s pass=%s url=%s' % (bool(_rut and _rut != 'NOT_SET'), bool(_pass and _pass != 'NOT_SET'), _url), 200
+        return ('rc=%s\n\n%s' % (_am._LAST_SYNC_RC, _am._LAST_SYNC_OUTPUT)) or 'no sync run yet', 200
 
     @app.route('/api/sync-trigger', methods=['POST'])
     def api_sync_trigger():
@@ -4635,6 +4634,7 @@ def _run_sync(flask_app):
            'GV_BINS_OUT': str(bins_path),
            'GV_PALLETS_OUT': str(pallets_path)}
 
+    _sync_lines = []
     proc = subprocess.Popen(
         [sys.executable, str(scraper)],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -4642,7 +4642,12 @@ def _run_sync(flask_app):
     )
     for line in proc.stdout:
         flask_app.logger.info(f'[auto-sync] {line.rstrip()}')
+        _sync_lines.append(line.rstrip())
     proc.wait()
+
+    import app as _self_mod
+    _self_mod._LAST_SYNC_OUTPUT = '\n'.join(_sync_lines[-80:])
+    _self_mod._LAST_SYNC_RC = proc.returncode
 
     if proc.returncode != 0:
         flask_app.logger.error(f'[auto-sync] scraper exited {proc.returncode}')
