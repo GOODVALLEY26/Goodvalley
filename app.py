@@ -3709,25 +3709,25 @@ function upload() {
     def api_sync_status_check():
         passcode = (request.form.get('passcode') or request.headers.get('X-Passcode') or '').strip()
         if passcode != '001083748':
-            return jsonify({'error': 'unauthorized'}), 401
+            return {'error': 'unauthorized'}, 401
         import os as _os, urllib.request as _ur
-        rut_set  = bool(_os.environ.get('PWAREHOUSE_RUT'))
-        pass_set = bool(_os.environ.get('PWAREHOUSE_PASS'))
-        pw_url   = _os.environ.get('PWAREHOUSE_URL', 'http://190.211.168.247:8077')
+        _rut_set  = bool(_os.environ.get('PWAREHOUSE_RUT'))
+        _pass_set = bool(_os.environ.get('PWAREHOUSE_PASS'))
+        _pw_url   = _os.environ.get('PWAREHOUSE_URL', 'http://190.211.168.247:8077')
         try:
-            req = _ur.urlopen(pw_url, timeout=10)
-            pw_status = req.status
-            pw_ok = True
-        except Exception as e:
-            pw_status = str(e)
-            pw_ok = False
-        return jsonify({
-            'rut_set': rut_set,
-            'pass_set': pass_set,
-            'pwarehouse_url': pw_url,
-            'pwarehouse_reachable': pw_ok,
-            'pwarehouse_status': pw_status,
-        })
+            _req = _ur.urlopen(_pw_url, timeout=10)
+            _pw_status = str(_req.status)
+            _pw_ok = True
+        except Exception as _e:
+            _pw_status = str(_e)
+            _pw_ok = False
+        return {
+            'rut_set': _rut_set,
+            'pass_set': _pass_set,
+            'pwarehouse_url': _pw_url,
+            'pwarehouse_reachable': _pw_ok,
+            'pwarehouse_status': _pw_status,
+        }
 
     @app.route('/api/sync-trigger', methods=['POST'])
     def api_sync_trigger():
