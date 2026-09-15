@@ -3709,11 +3709,12 @@ function upload() {
 
     @app.route('/api/sync-status-check', methods=['POST'])
     def api_sync_status_check():
-        import os as _os, app as _am
+        from pathlib import Path as _P
         _passcode = request.headers.get('X-Passcode', '') or ''
         if _passcode.strip() != '001083748':
             return 'unauthorized', 401
-        return ('rc=%s\n\n%s' % (_am._LAST_SYNC_RC, _am._LAST_SYNC_OUTPUT)) or 'no sync run yet', 200
+        _f = _P('/tmp/gv_last_sync.txt')
+        return _f.read_text() if _f.exists() else 'no sync run yet', 200
 
     @app.route('/api/sync-trigger', methods=['POST'])
     def api_sync_trigger():
@@ -4645,9 +4646,12 @@ def _run_sync(flask_app):
         _sync_lines.append(line.rstrip())
     proc.wait()
 
-    import app as _self_mod
-    _self_mod._LAST_SYNC_OUTPUT = '\n'.join(_sync_lines[-80:])
-    _self_mod._LAST_SYNC_RC = proc.returncode
+    try:
+        _Path2('/tmp/gv_last_sync.txt').write_text(
+            'rc=%d\n\n%s' % (proc.returncode, '\n'.join(_sync_lines[-80:]))
+        )
+    except Exception:
+        pass
 
     if proc.returncode != 0:
         flask_app.logger.error(f'[auto-sync] scraper exited {proc.returncode}')
