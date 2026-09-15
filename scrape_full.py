@@ -278,7 +278,14 @@ def _transform_pallets(raw_rows):
     if raw_rows:
         first = raw_rows[0]
         print(f'  [pallets] raw row keys: {list(first.keys())}')
-        print(f'  [pallets] sample row: {dict(list(first.items())[:20])}')
+        print(f'  [pallets] full row: {dict(first)}')
+        # count how many pass each filter for debug
+        _n_ciruela = sum(1 for r in raw_rows if 'CIRUELA' in str(_rv(r,'PRODUCTO',8) or '').upper())
+        _n_tarja   = sum(1 for r in raw_rows if str(_rv(r,'TARJA',0) or '').strip())
+        _n_ot      = sum(1 for r in raw_rows if str(_rv(r,'OT',5) or '').strip())
+        _n_cliente = sum(1 for r in raw_rows if str(_rv(r,'CLIENTE',14) or '').strip())
+        _n_disp    = sum(1 for r in raw_rows if 'DISPONIBLE' in str(_rv(r,'ESTADO',15) or '').upper() or not str(_rv(r,'ESTADO',15) or '').strip())
+        print(f'  [pallets] filter counts — total:{len(raw_rows)} ciruela:{_n_ciruela} tarja:{_n_tarja} ot:{_n_ot} cliente:{_n_cliente} disponible:{_n_disp}')
     for row in raw_rows:
         producto = str(_rv(row, 'PRODUCTO', 8) or '').strip()
         if 'CIRUELA' not in producto.upper():
