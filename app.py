@@ -3709,24 +3709,25 @@ function upload() {
     def api_sync_status_check():
         passcode = (request.form.get('passcode') or request.headers.get('X-Passcode') or '').strip()
         if passcode != '001083748':
-            return {'error': 'unauthorized'}, 401
-        import subprocess, sys, os as _os
-        from pathlib import Path as _Path3
-        scraper = _Path3(__file__).parent / 'scrape_full.py'
-        env = {**_os.environ, 'GV_NO_UPLOAD': '1',
-               'GV_BINS_OUT': '/tmp/gv_debug_bins.json',
-               'GV_PALLETS_OUT': '/tmp/gv_debug_pallets.json'}
-        proc = subprocess.run(
-            [sys.executable, str(scraper)],
-            capture_output=True, text=True, timeout=120, env=env,
-        )
-        return {
-            'returncode': proc.returncode,
-            'stdout': proc.stdout[-3000:],
-            'stderr': proc.stderr[-1000:],
-            'rut_set': bool(_os.environ.get('PWAREHOUSE_RUT')),
-            'pass_set': bool(_os.environ.get('PWAREHOUSE_PASS')),
-        }
+            return jsonify({'error': 'unauthorized'}), 401
+        import os as _os, urllib.request as _ur
+        rut_set  = bool(_os.environ.get('PWAREHOUSE_RUT'))
+        pass_set = bool(_os.environ.get('PWAREHOUSE_PASS'))
+        pw_url   = _os.environ.get('PWAREHOUSE_URL', 'http://190.211.168.247:8077')
+        try:
+            req = _ur.urlopen(pw_url, timeout=10)
+            pw_status = req.status
+            pw_ok = True
+        except Exception as e:
+            pw_status = str(e)
+            pw_ok = False
+        return jsonify({
+            'rut_set': rut_set,
+            'pass_set': pass_set,
+            'pwarehouse_url': pw_url,
+            'pwarehouse_reachable': pw_ok,
+            'pwarehouse_status': pw_status,
+        })
 
     @app.route('/api/sync-trigger', methods=['POST'])
     def api_sync_trigger():
