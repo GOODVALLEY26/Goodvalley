@@ -275,6 +275,10 @@ def _transform_bins(raw_rows):
 
 def _transform_pallets(raw_rows):
     pallets = []
+    if raw_rows:
+        first = raw_rows[0]
+        print(f'  [pallets] raw row keys: {list(first.keys())}')
+        print(f'  [pallets] sample row: {dict(list(first.items())[:20])}')
     for row in raw_rows:
         producto = str(_rv(row, 'PRODUCTO', 8) or '').strip()
         if 'CIRUELA' not in producto.upper():
