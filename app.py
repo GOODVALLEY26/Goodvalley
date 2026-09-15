@@ -3707,27 +3707,14 @@ function upload() {
 
     @app.route('/api/sync-status-check', methods=['POST'])
     def api_sync_status_check():
-        passcode = (request.form.get('passcode') or request.headers.get('X-Passcode') or '').strip()
-        if passcode != '001083748':
-            return {'error': 'unauthorized'}, 401
-        import os as _os, urllib.request as _ur
-        _rut_set  = bool(_os.environ.get('PWAREHOUSE_RUT'))
-        _pass_set = bool(_os.environ.get('PWAREHOUSE_PASS'))
-        _pw_url   = _os.environ.get('PWAREHOUSE_URL', 'http://190.211.168.247:8077')
-        try:
-            _req = _ur.urlopen(_pw_url, timeout=10)
-            _pw_status = str(_req.status)
-            _pw_ok = True
-        except Exception as _e:
-            _pw_status = str(_e)
-            _pw_ok = False
-        return {
-            'rut_set': _rut_set,
-            'pass_set': _pass_set,
-            'pwarehouse_url': _pw_url,
-            'pwarehouse_reachable': _pw_ok,
-            'pwarehouse_status': _pw_status,
-        }
+        import os as _os
+        _passcode = request.headers.get('X-Passcode', '') or ''
+        if _passcode.strip() != '001083748':
+            return 'unauthorized', 401
+        _rut  = _os.environ.get('PWAREHOUSE_RUT',  'NOT_SET')
+        _pass = _os.environ.get('PWAREHOUSE_PASS', 'NOT_SET')
+        _url  = _os.environ.get('PWAREHOUSE_URL',  'NOT_SET')
+        return 'rut=%s pass=%s url=%s' % (bool(_rut and _rut != 'NOT_SET'), bool(_pass and _pass != 'NOT_SET'), _url), 200
 
     @app.route('/api/sync-trigger', methods=['POST'])
     def api_sync_trigger():
