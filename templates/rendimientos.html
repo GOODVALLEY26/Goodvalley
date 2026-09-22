@@ -5,21 +5,14 @@
 <div class="row-between" style="margin-bottom:10px">
   <div>
     <h1>Rendimientos de Proceso</h1>
-    <p class="muted">Rend. Teórico es editable con contraseña. Rend. Usado alimenta el cálculo de MP Comprometida en órdenes.</p>
+    <p class="muted">Rend. Teórico es editable. Rend. Usado alimenta el cálculo de MP Comprometida en órdenes.</p>
   </div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <button class="btn btn-primary" id="edit-btn">Editar</button>
-    <div id="pw-section" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
-      <input type="password" id="pw-field" placeholder="Contraseña"
-             style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;width:160px">
-      <button class="btn btn-primary" id="unlock-btn" type="button">Desbloquear</button>
-      <span id="pw-error" style="display:none;color:var(--danger);font-size:13px;font-weight:600">Contraseña incorrecta</span>
-    </div>
   </div>
 </div>
 
 <form method="post" action="{{ url_for('rendimientos_save') }}" id="rend-form">
-  <input type="hidden" name="passcode" id="hidden-passcode">
 
   <div id="save-top" style="display:none;margin:0 0 10px">
     <button class="btn btn-primary" type="submit">Guardar cambios</button>
@@ -76,59 +69,24 @@
 
 <script>
 (function () {
-  var editBtn   = document.getElementById('edit-btn');
-  var pwSection = document.getElementById('pw-section');
-  var pwField   = document.getElementById('pw-field');
-  var unlockBtn = document.getElementById('unlock-btn');
-  var pwError   = document.getElementById('pw-error');
-  var saveTop   = document.getElementById('save-top');
-  var saveBot   = document.getElementById('save-bottom');
-  var hiddenPw  = document.getElementById('hidden-passcode');
+  var editBtn = document.getElementById('edit-btn');
+  var saveTop = document.getElementById('save-top');
+  var saveBot = document.getElementById('save-bottom');
 
   editBtn.addEventListener('click', function () {
-    pwSection.style.display = 'flex';
-    editBtn.style.display   = 'none';
-    pwField.focus();
-  });
-
-  function tryUnlock() {
-    var pw = pwField.value;
-    fetch('{{ url_for("rendimientos_check") }}', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passcode: pw })
-    })
-    .then(function (r) { return r.json(); })
-    .then(function (d) {
-      if (d.ok) {
-        pwSection.style.display = 'none';
-        document.querySelectorAll('.yield-input').forEach(function (el) {
-          el.disabled = false;
-        });
-        saveTop.style.display = 'block';
-        saveBot.style.display = 'block';
-        hiddenPw.value = pw;
-
-        document.querySelectorAll('input[data-row]').forEach(function (el) {
-          el.addEventListener('input', function () {
-            var used = document.getElementById('usado_' + this.dataset.row);
-            if (used) used.textContent = (parseFloat(this.value) || 0).toFixed(3);
-          });
-        });
-      } else {
-        pwError.style.display = 'inline';
-        setTimeout(function () { pwError.style.display = 'none'; }, 3000);
-      }
-    })
-    .catch(function () {
-      pwError.style.display = 'inline';
-      setTimeout(function () { pwError.style.display = 'none'; }, 3000);
+    editBtn.style.display = 'none';
+    document.querySelectorAll('.yield-input').forEach(function (el) {
+      el.disabled = false;
     });
-  }
+    saveTop.style.display = 'block';
+    saveBot.style.display = 'block';
 
-  unlockBtn.addEventListener('click', tryUnlock);
-  pwField.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); tryUnlock(); }
+    document.querySelectorAll('input[data-row]').forEach(function (el) {
+      el.addEventListener('input', function () {
+        var used = document.getElementById('usado_' + this.dataset.row);
+        if (used) used.textContent = (parseFloat(this.value) || 0).toFixed(3);
+      });
+    });
   });
 })();
 </script>

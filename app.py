@@ -4190,9 +4190,6 @@ function upload() {
     @login_required
     def save_clientes():
         from models import Cliente
-        if request.form.get('passcode') != '001083748':
-            flash('Contraseña incorrecta.', 'error')
-            return redirect(url_for('list_clientes'))
         for key, val in request.form.items():
             if key.startswith('grado_'):
                 try:
@@ -4234,9 +4231,6 @@ function upload() {
     @login_required
     def save_productores():
         from models import Productor
-        if request.form.get('passcode') != '001083748':
-            flash('Contraseña incorrecta.', 'error')
-            return redirect(url_for('list_productores'))
         for key, val in request.form.items():
             if key.startswith('grado_'):
                 try:
@@ -4300,12 +4294,9 @@ function upload() {
         return jsonify({'ok': data.get('passcode') == '001083748'})
 
     @app.route('/rendimientos/save', methods=['POST'])
+    @login_required
     def rendimientos_save():
         from models import YieldOverride, load_yield_overrides
-
-        if request.form.get('passcode') != '001083748':
-            flash('Contraseña incorrecta.', 'err')
-            return redirect(url_for('rendimientos'))
 
         SAVE_DEFS = [
             ('tsc',     [35, 45, 55, 65, 75, 85, 95, 110, 132]),
