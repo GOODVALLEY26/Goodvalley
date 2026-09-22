@@ -1290,6 +1290,46 @@ def create_app():
                 except Exception as _re:
                     db.session.rollback()
 
+            # ── Import pallets (Pallets en Bodega) ────────────────────────────
+            pf = request.files.get('pallets_file')
+            pal_added = pal_updated = pal_gone = 0
+            if pf and pf.filename:
+                try:
+                    from models import Pallet as _Pallet3
+                    import datetime as _dt3
+                    pallets_data = _json.load(pf)
+                    existing_pal = {r[0]: r[1] for r in db.session.query(_Pallet3.tarja, _Pallet3.id).all()}
+                    for p in pallets_data:
+                        tarja = str(p.get('tarja') or '').strip()
+                        if not tarja: continue
+                        fields = {
+                            'ot':        str(p.get('ot') or '').strip() or None,
+                            'customer':  str(p.get('customer') or '').strip() or None,
+                            'caliber':   str(p.get('caliber') or '').strip() or None,
+                            'drying':    p.get('drying') or None,
+                            'weight_kg': float(p.get('weight_kg') or 0),
+                            'producto':  str(p.get('producto') or '').strip() or None,
+                            'unidades':  int(p['unidades']) if p.get('unidades') else None,
+                            'synced_at': _dt3.datetime.utcnow(),
+                        }
+                        if tarja in existing_pal:
+                            db.session.query(_Pallet3).filter_by(id=existing_pal[tarja]).update(fields, synchronize_session=False)
+                            pal_updated += 1
+                        else:
+                            db.session.add(_Pallet3(tarja=tarja, **fields))
+                            existing_pal[tarja] = None
+                            pal_added += 1
+                    db.session.commit()
+                    # Delete pallets not in this upload
+                    seen_pal = {str(p.get('tarja') or '').strip() for p in pallets_data}
+                    gone_pal = set(existing_pal.keys()) - seen_pal
+                    if gone_pal and len(pallets_data) >= 50:
+                        db.session.query(_Pallet3).filter(_Pallet3.tarja.in_(gone_pal)).delete(synchronize_session=False)
+                        db.session.commit()
+                        pal_gone = len(gone_pal)
+                except Exception as _pe:
+                    db.session.rollback()
+
             msg = f'Sync completo: {added} nuevos, {updated} actualizados, {skipped} omitidos, {gone_count} eliminados'
             if alloc_count:
                 msg += f', {alloc_count} auto-asignados'
@@ -1297,6 +1337,8 @@ def create_app():
                 msg += f' | Grades: {grades_added} nuevos, {grades_updated} actualizados'
             if rec_added or rec_updated:
                 msg += f' | Recepciones: {rec_added} nuevas, {rec_updated} actualizadas'
+            if pal_added or pal_updated:
+                msg += f' | Pallets: {pal_added} nuevos, {pal_updated} actualizados, {pal_gone} eliminados'
             flash(msg + '.', 'ok')
         except Exception as e:
             db.session.rollback()
