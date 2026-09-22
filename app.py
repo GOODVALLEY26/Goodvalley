@@ -4755,7 +4755,19 @@ def _run_sync(flask_app):
                         existing_p.add(tarja)
                         added_p += 1
                 db.session.commit()
-                flask_app.logger.info(f'[auto-sync] Pallets: {added_p} new, {updated_p} updated')
+
+                # Delete pallets no longer in pWarehouse (guard: only if >= 50 scraped)
+                seen_p  = {str(p.get('tarja') or '').strip() for p in pallets_data}
+                gone_p  = {t for t in existing_p if t not in seen_p}
+                gone_p_count = 0
+                if gone_p and len(pallets_data) >= 50:
+                    db.session.query(_Pallet2).filter(
+                        _Pallet2.tarja.in_(gone_p)
+                    ).delete(synchronize_session=False)
+                    db.session.commit()
+                    gone_p_count = len(gone_p)
+
+                flask_app.logger.info(f'[auto-sync] Pallets: {added_p} new, {updated_p} updated, {gone_p_count} removed')
             except Exception as e:
                 db.session.rollback()
                 flask_app.logger.error(f'[auto-sync] pallets import error: {e}')
