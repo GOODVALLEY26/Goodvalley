@@ -349,13 +349,46 @@
           {% else %}
           <tr><td colspan="2" class="muted">No hay productores registrados.</td></tr>
           {% endfor %}
+          <tr id="new-prod-row" style="display:none;background:var(--lavender)">
+            <td><input type="text" name="new_nombre_prod" placeholder="Nombre del productor"
+                       style="padding:5px 8px;border:1px solid var(--line);border-radius:4px;
+                              font-size:13px;font-family:inherit;width:100%;background:var(--card);
+                              color:var(--fg)"></td>
+            <td>
+              <select name="new_grado_prod" class="grade-sel">
+                <option value="">—</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+              </select>
+            </td>
+          </tr>
         </tbody>
       </table>
       <div class="dq-save-row">
+        <button type="button" onclick="toggleNewProd()"
+                style="padding:6px 14px;border:1px dashed var(--line);border-radius:6px;
+                       background:none;color:var(--muted);font-size:12px;cursor:pointer;
+                       font-family:inherit" id="btn-add-prod">+ Agregar productor</button>
         <input type="password" name="passcode" class="dq-passcode" placeholder="Contraseña">
         <button class="btn btn-primary" type="submit">Guardar productores</button>
       </div>
     </form>
+    <script>
+    function toggleNewProd() {
+      var row = document.getElementById('new-prod-row');
+      var btn = document.getElementById('btn-add-prod');
+      if (row.style.display === 'none') {
+        row.style.display = '';
+        btn.textContent = '✕ Cancelar';
+        row.querySelector('input').focus();
+      } else {
+        row.style.display = 'none';
+        btn.textContent = '+ Agregar productor';
+        row.querySelector('input').value = '';
+      }
+    }
+    </script>
   </div>
 
   <!-- ══════════════════════════════════════════════════════════
@@ -397,13 +430,54 @@
           {% else %}
           <tr><td colspan="3" class="muted">No hay clientes registrados.</td></tr>
           {% endfor %}
+          <tr id="new-cli-row" style="display:none;background:var(--lavender)">
+            <td><input type="text" name="new_nombre_cli" placeholder="Nombre del cliente"
+                       style="padding:5px 8px;border:1px solid var(--line);border-radius:4px;
+                              font-size:13px;font-family:inherit;width:100%;background:var(--card);
+                              color:var(--fg)"></td>
+            <td>
+              <select name="new_grado_cli" class="grade-sel">
+                <option value="">—</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+              </select>
+            </td>
+            <td>
+              <select name="new_potencial_cli" class="pot-sel">
+                <option value="">—</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+              </select>
+            </td>
+          </tr>
         </tbody>
       </table>
       <div class="dq-save-row">
+        <button type="button" onclick="toggleNewCli()"
+                style="padding:6px 14px;border:1px dashed var(--line);border-radius:6px;
+                       background:none;color:var(--muted);font-size:12px;cursor:pointer;
+                       font-family:inherit" id="btn-add-cli">+ Agregar cliente</button>
         <input type="password" name="passcode" class="dq-passcode" placeholder="Contraseña">
         <button class="btn btn-primary" type="submit">Guardar clientes</button>
       </div>
     </form>
+    <script>
+    function toggleNewCli() {
+      var row = document.getElementById('new-cli-row');
+      var btn = document.getElementById('btn-add-cli');
+      if (row.style.display === 'none') {
+        row.style.display = '';
+        btn.textContent = '✕ Cancelar';
+        row.querySelector('input').focus();
+      } else {
+        row.style.display = 'none';
+        btn.textContent = '+ Agregar cliente';
+        row.querySelector('input').value = '';
+      }
+    }
+    </script>
   </div>
 
 </div><!-- /dq-wrap -->

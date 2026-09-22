@@ -4195,13 +4195,30 @@ function upload() {
             return redirect(url_for('list_clientes'))
         for key, val in request.form.items():
             if key.startswith('grado_'):
-                c = db.session.get(Cliente, int(key[6:]))
-                if c:
-                    c.grado = val.strip() or None
+                try:
+                    c = db.session.get(Cliente, int(key[6:]))
+                    if c:
+                        c.grado = val.strip() or None
+                except (ValueError, TypeError):
+                    pass
             elif key.startswith('potencial_'):
-                c = db.session.get(Cliente, int(key[10:]))
-                if c:
-                    c.potencial = val.strip() or None
+                try:
+                    c = db.session.get(Cliente, int(key[10:]))
+                    if c:
+                        c.potencial = val.strip() or None
+                except (ValueError, TypeError):
+                    pass
+        new_nombre = request.form.get('new_nombre_cli', '').strip()
+        if new_nombre:
+            existing = Cliente.query.filter_by(nombre=new_nombre).first()
+            if not existing:
+                db.session.add(Cliente(
+                    nombre=new_nombre,
+                    grado=request.form.get('new_grado_cli', '').strip() or None,
+                    potencial=request.form.get('new_potencial_cli', '').strip() or None,
+                ))
+            else:
+                flash(f'El cliente "{new_nombre}" ya existe.', 'err')
         db.session.commit()
         flash('Cambios guardados.', 'ok')
         return redirect(url_for('dashboard_calidad'))
@@ -4222,9 +4239,22 @@ function upload() {
             return redirect(url_for('list_productores'))
         for key, val in request.form.items():
             if key.startswith('grado_'):
-                p = db.session.get(Productor, int(key[6:]))
-                if p:
-                    p.grado = val.strip() or None
+                try:
+                    p = db.session.get(Productor, int(key[6:]))
+                    if p:
+                        p.grado = val.strip() or None
+                except (ValueError, TypeError):
+                    pass
+        new_nombre = request.form.get('new_nombre_prod', '').strip()
+        if new_nombre:
+            existing = Productor.query.filter_by(nombre=new_nombre).first()
+            if not existing:
+                db.session.add(Productor(
+                    nombre=new_nombre,
+                    grado=request.form.get('new_grado_prod', '').strip() or None,
+                ))
+            else:
+                flash(f'El productor "{new_nombre}" ya existe.', 'err')
         db.session.commit()
         flash('Cambios guardados.', 'ok')
         return redirect(url_for('dashboard_calidad'))

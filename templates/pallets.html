@@ -21,16 +21,10 @@
       <div class="big" style="font-size:1.5rem">{{ "{:,.0f}".format(total_kg_historico) }}</div>
       <div class="lbl">KG Histórico</div>
     </div>
-    {% if saldo_pallets %}
+    {% if saldo_pallets or pendientes_groups %}
     <div class="card" style="padding:12px 18px">
-      <div class="big" style="font-size:1.5rem">{{ "{:,.0f}".format(pallet_kg) }}</div>
+      <div class="big" style="font-size:1.5rem">{{ "{:,.0f}".format(pallet_kg + pend_kg) }}</div>
       <div class="lbl">KG pWarehouse</div>
-    </div>
-    {% endif %}
-    {% if pendientes_groups %}
-    <div class="card" style="padding:12px 18px;border-color:#f59e0b">
-      <div class="big" style="font-size:1.5rem;color:#92400e">{{ "{:,.0f}".format(pend_kg) }}</div>
-      <div class="lbl">KG Pendientes</div>
     </div>
     {% endif %}
   </div>
