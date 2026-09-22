@@ -12,6 +12,15 @@
     <h1>Pallets en Bodega</h1>
     <p class="muted">Producto terminado disponible.{% if last_sync %} · última sync {{ (last_sync|santiago).strftime('%d-%m-%Y %H:%M') }}{% endif %}</p>
   </div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  <a href="{{ url_for('pallets_export') }}"
+     style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;
+            border:1px solid var(--border);border-radius:7px;font-size:13px;
+            font-weight:600;color:var(--fg);text-decoration:none;background:var(--card);
+            white-space:nowrap"
+     title="Descargar como Excel (2 hojas: Histórico + pWarehouse)">
+    ↓ Descargar Excel
+  </a>
   <div class="cards" style="margin:0;gap:10px">
     <div class="card" style="padding:12px 18px">
       <div class="big">{{ total_ots }}</div>

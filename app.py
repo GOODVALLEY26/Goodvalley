@@ -4082,6 +4082,212 @@ function upload() {
             TIPO_ABBR=_TIPO_ABBR,
         )
 
+    @app.route('/pallets/export.xlsx')
+    @login_required
+    def pallets_export():
+        import io, openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from models import Pallet, HistoricoMovimiento, OrdenDeVenta, Proceso, WASTE_SERIES
+        from collections import OrderedDict as _OD, defaultdict as _dd
+
+        # ── Replicate list_pallets queries ────────────────────────────────────
+        ots_with_embarque = set()
+        for _ot, _kg_emb, _kg_sal in (
+            db.session.query(OrdenDeVenta.ot, OrdenDeVenta.kg_embarcado, Proceso.kg_salida_bueno)
+            .outerjoin(Proceso, OrdenDeVenta.proceso_id == Proceso.id)
+            .filter(OrdenDeVenta.kg_embarcado.isnot(None), OrdenDeVenta.kg_embarcado > 0)
+            .all()
+        ):
+            if _kg_sal and _kg_sal > 0:
+                if _kg_emb / _kg_sal >= 0.005:
+                    ots_with_embarque.add(_ot)
+            else:
+                ots_with_embarque.add(_ot)
+
+        produced = (HistoricoMovimiento.query
+                    .filter(HistoricoMovimiento.movimiento.in_([
+                        'INGRESO DESDE PROCESO', 'REPALETIZAJE', 'INGRESO REEMBALAJE'
+                    ]))
+                    .filter(~db.or_(
+                        HistoricoMovimiento.serie.in_(WASTE_SERIES),
+                        HistoricoMovimiento.serie.ilike('%DESCARTE%')
+                    ))
+                    .filter(db.or_(HistoricoMovimiento.producto.is_(None),
+                                   ~HistoricoMovimiento.producto.ilike('%CEREZA%')))
+                    .order_by(HistoricoMovimiento.fecha)
+                    .all())
+
+        consumed_rows = (HistoricoMovimiento.query
+                         .filter(HistoricoMovimiento.movimiento.in_([
+                             'EMBARQUE', 'EGRESO A REPALETIZAJE', 'EGRESO REEMBALAJE'
+                         ]))
+                         .filter(db.or_(HistoricoMovimiento.producto.is_(None),
+                                        ~HistoricoMovimiento.producto.ilike('%CEREZA%')))
+                         .all())
+        consumed_by_ot = {}
+        for r in consumed_rows:
+            if r.tarja:
+                consumed_by_ot.setdefault(r.ot, set()).add(r.tarja.strip())
+
+        groups = _OD()
+        for r in produced:
+            groups.setdefault(_ot_base(r.ot), []).append(r)
+
+        saldos = []
+        for base_ot, prod_rows in groups.items():
+            leftover = []
+            for r in prod_rows:
+                if r.ot not in ots_with_embarque:
+                    continue
+                tarja = (r.tarja or '').strip()
+                if not tarja or tarja not in consumed_by_ot.get(r.ot, set()):
+                    leftover.append(r)
+            if leftover:
+                saldos.append({
+                    'base_ot':  base_ot,
+                    'tarjas':   sorted(leftover, key=lambda r: r.fecha or datetime.min),
+                    'total_kg': sum(r.neto or 0 for r in leftover),
+                })
+        saldos.sort(key=lambda s: s['total_kg'], reverse=True)
+
+        hum_rows = (HistoricoMovimiento.query
+                    .with_entities(HistoricoMovimiento.ot, HistoricoMovimiento.humedad)
+                    .filter(HistoricoMovimiento.movimiento == 'EGRESO A PROCESO')
+                    .filter(HistoricoMovimiento.humedad.isnot(None),
+                            HistoricoMovimiento.humedad > 0)
+                    .all())
+        hum_buckets = _dd(list)
+        for row in hum_rows:
+            hum_buckets[row.ot].append(row.humedad)
+        humedad_by_ot = {}
+        for s in saldos:
+            vals = [v for r in s['tarjas'] for v in hum_buckets.get(r.ot, [])]
+            if vals:
+                humedad_by_ot[s['base_ot']] = round(sum(vals) / len(vals), 1)
+
+        historico_tarjas = {r.tarja.strip() for s in saldos for r in s['tarjas'] if r.tarja}
+        saldo_pallets = ([
+            p for p in (
+                Pallet.query
+                .filter(Pallet.ot.in_(list(ots_with_embarque)))
+                .filter(Pallet.weight_kg > 0)
+                .filter(db.or_(Pallet.producto.is_(None),
+                               ~Pallet.producto.ilike('%CEREZA%')))
+                .order_by(Pallet.ot, Pallet.tarja)
+                .all()
+            ) if p.tarja not in historico_tarjas
+        ] if ots_with_embarque else [])
+
+        all_pallets = (Pallet.query
+                       .filter(Pallet.weight_kg > 0)
+                       .filter(db.or_(Pallet.producto.is_(None),
+                                      ~Pallet.producto.ilike('%CEREZA%')))
+                       .order_by(Pallet.ot, Pallet.tarja)
+                       .all())
+        pendientes_by_ot = _OD()
+        for p in all_pallets:
+            if (p.ot or '') not in ots_with_embarque:
+                pendientes_by_ot.setdefault(p.ot or '—', []).append(p)
+        pendientes_groups = sorted([
+            {'ot': ot, 'pallets': ps, 'total_kg': sum(p.weight_kg or 0 for p in ps)}
+            for ot, ps in pendientes_by_ot.items()
+        ], key=lambda g: g['total_kg'], reverse=True)
+
+        # ── Build workbook ────────────────────────────────────────────────────
+        wb = openpyxl.Workbook()
+
+        HDR_FILL = PatternFill('solid', fgColor='2c5f3a')
+        HDR_FONT = Font(color='FFFFFF', bold=True, size=10)
+        HDR_ALIGN = Alignment(horizontal='center', vertical='center')
+
+        def _style_header(ws, headers):
+            ws.append(headers)
+            for cell in ws[1]:
+                cell.font = HDR_FONT
+                cell.fill = HDR_FILL
+                cell.alignment = HDR_ALIGN
+
+        def _autofit(ws):
+            for col in ws.columns:
+                max_len = max((len(str(c.value or '')) for c in col), default=8)
+                ws.column_dimensions[col[0].column_letter].width = min(max_len + 3, 40)
+
+        # ── Sheet 1: Histórico para modelo ────────────────────────────────────
+        ws1 = wb.active
+        ws1.title = 'Histórico para modelo'
+        _style_header(ws1, [
+            'OT Base', 'Sub-OT', 'Tarja', 'Producto', 'Tipo Proceso',
+            'Calibre', 'Fecha', 'Neto (kg)', 'Humedad (%)', 'Productor',
+        ])
+        for s in saldos:
+            hum = humedad_by_ot.get(s['base_ot'])
+            for r in s['tarjas']:
+                ws1.append([
+                    s['base_ot'],
+                    r.ot,
+                    r.tarja or '',
+                    r.producto or '',
+                    r.tipoproceso or '',
+                    r.serie or '',
+                    r.fecha.strftime('%d-%m-%Y') if r.fecha else '',
+                    round(r.neto or 0, 1),
+                    hum if hum else '',
+                    r.productor or '',
+                ])
+        # totals row
+        total_h = sum(r.neto or 0 for s in saldos for r in s['tarjas'])
+        ws1.append(['', '', '', '', '', '', 'TOTAL', round(total_h, 1), '', ''])
+        last1 = ws1.max_row
+        for cell in ws1[last1]:
+            cell.font = Font(bold=True)
+        _autofit(ws1)
+
+        # ── Sheet 2: pWarehouse ───────────────────────────────────────────────
+        ws2 = wb.create_sheet('pWarehouse')
+        _style_header(ws2, [
+            'Estado', 'OT', 'Tarja', 'Cliente', 'Producto',
+            'Calibre', 'Secado', 'Neto (kg)',
+        ])
+        for p in sorted(saldo_pallets, key=lambda x: x.ot or ''):
+            ws2.append([
+                'Con embarque',
+                p.ot or '',
+                p.tarja or '',
+                p.customer or '',
+                p.producto or '',
+                p.caliber or '',
+                p.drying or '',
+                round(p.weight_kg or 0, 1),
+            ])
+        for g in pendientes_groups:
+            for p in g['pallets']:
+                ws2.append([
+                    'Pendiente',
+                    p.ot or '',
+                    p.tarja or '',
+                    p.customer or '',
+                    p.producto or '',
+                    p.caliber or '',
+                    p.drying or '',
+                    round(p.weight_kg or 0, 1),
+                ])
+        total_pw = (sum(p.weight_kg or 0 for p in saldo_pallets) +
+                    sum(p.weight_kg or 0 for g in pendientes_groups for p in g['pallets']))
+        ws2.append(['', '', '', '', '', '', 'TOTAL', round(total_pw, 1)])
+        last2 = ws2.max_row
+        for cell in ws2[last2]:
+            cell.font = Font(bold=True)
+        _autofit(ws2)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        from flask import send_file
+        import datetime as _dt_exp
+        fname = f"pallets_bodega_{_dt_exp.date.today().strftime('%Y%m%d')}.xlsx"
+        return send_file(buf, as_attachment=True, download_name=fname,
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
     # ── Rendimientos ──────────────────────────────────────────────────────────
 
     # ── Clientes / Productores grades ─────────────────────────────────────────
