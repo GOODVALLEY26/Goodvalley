@@ -36,6 +36,14 @@
       <div class="lbl">KG pWarehouse</div>
     </div>
     {% endif %}
+    {% if deduped_kg and deduped_kg > 0 %}
+    <div style="display:flex;align-items:center;gap:6px;padding:8px 12px;
+                border:1px solid #d97706;border-radius:8px;background:#fffbeb;
+                font-size:12px;color:#92400e;max-width:260px;line-height:1.4">
+      <span style="font-size:15px;flex-shrink:0">ⓘ</span>
+      <span><strong>{{ "{:,.0f}".format(deduped_kg) }} kg</strong> ({{ deduped_count }} tarjas) no se muestran aquí porque ya están contados en <strong>KG Histórico</strong> — sin doble conteo.</span>
+    </div>
+    {% endif %}
   </div>
 </div>
 

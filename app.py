@@ -3989,7 +3989,7 @@ function upload() {
 
         # pWarehouse pallets for OTs with embarque not already in historico saldos
         historico_tarjas = {r.tarja.strip() for s in saldos for r in s['tarjas'] if r.tarja}
-        saldo_pallets = ([
+        _all_embarque_pallets = ([
             p for p in (
                 Pallet.query
                 .filter(Pallet.ot.in_(list(ots_with_embarque)))
@@ -3997,8 +3997,11 @@ function upload() {
                 .filter(db.or_(Pallet.producto.is_(None), ~Pallet.producto.ilike('%CEREZA%')))
                 .order_by(Pallet.ot, Pallet.tarja)
                 .all()
-            ) if p.tarja not in historico_tarjas
+            )
         ] if ots_with_embarque else [])
+        saldo_pallets = [p for p in _all_embarque_pallets if p.tarja not in historico_tarjas]
+        deduped_kg    = sum(p.weight_kg or 0 for p in _all_embarque_pallets if p.tarja in historico_tarjas)
+        deduped_count = sum(1               for p in _all_embarque_pallets if p.tarja in historico_tarjas)
 
         # Tipo + Observaciones lookup for pWarehouse saldo pallets (not stored in Pallet model)
         _pw_tarjas = [p.tarja for p in saldo_pallets if p.tarja]
@@ -4080,6 +4083,8 @@ function upload() {
             cal_stats=cal_stats,
             total_saldo_kg=total_saldo_kg,
             TIPO_ABBR=_TIPO_ABBR,
+            deduped_kg=deduped_kg,
+            deduped_count=deduped_count,
         )
 
     @app.route('/pallets/export.xlsx')
